@@ -1,0 +1,89 @@
+# Mac system files
+.DS_Store
+
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment directories
+venv/
+env/
+.venv/
+env.bak/
+venv.bak/
+
+# Python distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+sdist/
+wheels/
+*.manifest
+*.spec
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyCharm, VSCode and other IDEs
+.idea/
+.vscode/
+
+# Coverage reports
+.coverage
+.coverage.*
+*.coveragerc
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# Unit test result files
+nosetests.xml
+coverage.xml
+*.cover
+*.hypothesis/
+*.tox/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# PyInstaller
+*.spec
+
+# Pylint
+pylint-report.txt
+pylint-global-recursive.txt
+
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# pytest
+.cache/
+
+# Sphinx
+_build/
+
+# Environments
+.env
+.venv
+env/
+
+# Node modules (if any frontend work)
+node_modules/
+
+# Logs
+*.log
+
+fair_datasets/
+priv_datasets/
+linkability_results/
