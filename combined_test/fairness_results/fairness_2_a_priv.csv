@@ -1,0 +1,21 @@
+File,Recall,FAR,Precision,Accuracy,F1 Score,ROC AUC,AOD_protected,EOD_protected,SPD,DI
+combined_test/datasets/priv_new/priv/fairsmote_8_1.0.csv,0.88,0.13,0.87,0.88,0.87,0.9439162417466486,0.15,0.16,0.01,0.02
+combined_test/datasets/priv_new/priv/fairsmote_10_0.1.csv,0.88,0.1,0.89,0.89,0.88,0.9453819989534276,-0.04,-0.12,0.07,-0.16
+combined_test/datasets/priv_new/priv/fairsmote_56_5.0.csv,0.85,0.2,0.82,0.83,0.83,0.9026842754137557,-0.16,-0.23,0.06,-0.11
+combined_test/datasets/priv_new/priv/fairsmote_8_10.0.csv,0.91,0.09,0.9,0.91,0.9,0.9609081017965662,0.15,0.17,0.02,0.04
+combined_test/datasets/priv_new/priv/fairsmote_37_0.5.csv,0.64,0.27,0.7,0.68,0.67,0.7428004578431433,-0.09,-0.09,0.0,0.01
+combined_test/datasets/priv_new/priv/fairsmote_37_0.1.csv,0.63,0.29,0.68,0.67,0.65,0.7277831658446998,-0.06,-0.06,0.0,0.01
+combined_test/datasets/priv_new/priv/fairsmote_56_1.0.csv,0.82,0.22,0.79,0.8,0.8,0.8799902206512226,-0.18,-0.25,0.06,-0.13
+combined_test/datasets/priv_new/priv/fairsmote_10_0.5.csv,0.88,0.08,0.92,0.9,0.9,0.9543658891261881,0.02,-0.03,0.04,-0.08
+combined_test/datasets/priv_new/priv/fairsmote_8_5.0.csv,0.9,0.1,0.9,0.9,0.9,0.953952045253711,0.15,0.17,0.02,0.04
+combined_test/datasets/priv_new/priv/fairsmote_37_5.0.csv,0.65,0.29,0.68,0.68,0.66,0.738169301675151,-0.06,-0.04,0.02,0.05
+combined_test/datasets/priv_new/priv/fairsmote_56_0.5.csv,0.84,0.21,0.8,0.82,0.82,0.8905854507171602,-0.16,-0.18,0.02,-0.03
+combined_test/datasets/priv_new/priv/fairsmote_10_1.0.csv,0.89,0.09,0.91,0.9,0.9,0.9586438535810364,-0.02,-0.05,0.04,-0.08
+combined_test/datasets/priv_new/priv/fairsmote_8_0.1.csv,0.88,0.11,0.89,0.88,0.88,0.9426414505196017,0.16,0.19,0.03,0.06
+combined_test/datasets/priv_new/priv/fairsmote_8_0.5.csv,0.89,0.12,0.88,0.88,0.88,0.945518921020855,0.12,0.13,0.02,0.03
+combined_test/datasets/priv_new/priv/fairsmote_10_10.0.csv,0.9,0.09,0.91,0.9,0.9,0.9623827183973626,-0.0,-0.06,0.01,-0.02
+combined_test/datasets/priv_new/priv/fairsmote_10_5.0.csv,0.9,0.07,0.93,0.92,0.91,0.9702759454052019,-0.01,-0.05,0.03,-0.06
+combined_test/datasets/priv_new/priv/fairsmote_56_0.1.csv,0.83,0.22,0.8,0.81,0.81,0.8830160493711896,-0.16,-0.21,0.08,-0.16
+combined_test/datasets/priv_new/priv/fairsmote_37_1.0.csv,0.63,0.27,0.7,0.68,0.66,0.7353880654253663,-0.08,-0.04,0.03,0.07
+combined_test/datasets/priv_new/priv/fairsmote_37_10.0.csv,0.64,0.29,0.7,0.68,0.67,0.7365420145949237,-0.02,0.0,0.02,0.05
+combined_test/datasets/priv_new/priv/fairsmote_56_10.0.csv,0.86,0.23,0.8,0.81,0.83,0.8858623709155543,-0.13,-0.14,0.02,-0.04

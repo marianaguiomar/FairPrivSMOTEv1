@@ -1,0 +1,3 @@
+ds,set_key_vars
+"adult_true_input","[['age', 'sex', 'race'], ['age', 'hours_per_week'], ['capital-gain', 'capital-loss', 'hours-per-week'], ['race', 'sex', 'age', 'capital-gain']]"
+"compas_true_input","[['sex', 'race', 'c_charge_degree'], ['age_cat', 'priors_count', 'c_charge_degree'], ['sex', 'priors_count'], ['age_cat', 'priors_count']]"
