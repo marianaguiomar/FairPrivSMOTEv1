@@ -1,0 +1,10 @@
+Metric,Value
+Recall,0.74
+FAR,0.16
+Precision,0.82
+Accuracy,0.79
+F1 Score,0.78
+AOD_event,-0.08
+EOD_event,-0.01
+SPD,0.07
+DI,0.14

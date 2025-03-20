@@ -1,0 +1,11 @@
+Elapsed time for priv_datasets/PrivateSMOTE5/ds8_0.5-privateSMOTE5_QI0_knn5_per1.csv: 0.26 seconds
+Valid entries for Recall: 225 / Total files: 225
+Valid entries for FAR: 225 / Total files: 225
+Valid entries for Precision: 225 / Total files: 225
+Valid entries for Accuracy: 225 / Total files: 225
+Valid entries for F1 Score: 225 / Total files: 225
+Valid entries for AOD_V5: 223 / Total files: 225
+Valid entries for EOD_V5: 223 / Total files: 225
+Valid entries for SPD: 225 / Total files: 225
+Valid entries for DI: 80 / Total files: 225
+Average Fairness: {'Recall': 0.4156888888888887, 'FAR': 0.06057777777777782, 'Precision': 0.6222666666666664, 'Accuracy': 0.8157777777777785, 'F1 Score': 0.48617777777777793, 'AOD_V5': -0.16031390134529133, 'EOD_V5': -0.3808071748878926, 'SPD': 0.15262222222222227, 'DI': -6.247874999999999}

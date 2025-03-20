@@ -1,0 +1,11 @@
+average_fairness = {
+    'Recall': 0.10038888888888889,
+    'FAR': 0.002,
+    'Precision': 0.5702222222222221,
+    'Accuracy': 0.9185555555555555,
+    'F1 Score': 0.13427777777777772,
+    'AOD_sex': float('nan'),  # NaN value in Python
+    'EOD_sex': float('nan'),
+    'SPD': 0.02466666666666666,
+    'DI': float('nan')
+}

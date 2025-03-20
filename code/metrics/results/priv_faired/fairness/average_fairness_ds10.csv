@@ -1,0 +1,10 @@
+Metric,Value
+Recall,0.85
+FAR,0.13
+Precision,0.87
+Accuracy,0.86
+F1 Score,0.86
+AOD_ESSENTIAL_DENSITY,0.02
+EOD_ESSENTIAL_DENSITY,-0.04
+SPD,0.03
+DI,-0.07

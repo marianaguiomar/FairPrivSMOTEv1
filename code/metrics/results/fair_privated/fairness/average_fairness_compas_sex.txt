@@ -1,0 +1,10 @@
+Valid entries for Recall: 180 / Total files: 180
+Valid entries for FAR: 180 / Total files: 180
+Valid entries for Precision: 180 / Total files: 180
+Valid entries for Accuracy: 180 / Total files: 180
+Valid entries for F1 Score: 180 / Total files: 180
+Valid entries for AOD_sex: 180 / Total files: 180
+Valid entries for EOD_sex: 180 / Total files: 180
+Valid entries for SPD: 180 / Total files: 180
+Valid entries for DI: 180 / Total files: 180
+Average Fairness: {'Recall': 0.8380555555555553, 'FAR': 0.6174999999999998, 'Precision': 0.6257777777777778, 'Accuracy': 0.6331666666666671, 'F1 Score': 0.7156111111111103, 'AOD_sex': -0.004055555555555557, 'EOD_sex': 0.10722222222222219, 'SPD': 0.13283333333333344, 'DI': 0.15783333333333333}

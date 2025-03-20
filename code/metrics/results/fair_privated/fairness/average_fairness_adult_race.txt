@@ -1,0 +1,10 @@
+Valid entries for Recall: 180 / Total files: 180
+Valid entries for FAR: 180 / Total files: 180
+Valid entries for Precision: 180 / Total files: 180
+Valid entries for Accuracy: 180 / Total files: 180
+Valid entries for F1 Score: 180 / Total files: 180
+Valid entries for AOD_race: 180 / Total files: 180
+Valid entries for EOD_race: 180 / Total files: 180
+Valid entries for SPD: 180 / Total files: 180
+Valid entries for DI: 0 / Total files: 180
+Average Fairness: {'Recall': 0.0, 'FAR': 0.0, 'Precision': 0.0, 'Accuracy': 0.7562222222222229, 'F1 Score': 0.0, 'AOD_race': 0.0, 'EOD_race': 0.0, 'SPD': 0.0, 'DI': 0}
