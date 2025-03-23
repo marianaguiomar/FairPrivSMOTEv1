@@ -16,7 +16,8 @@ from clean import unpack_value, standardize_binary
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def get_ngbr(df, knn):
             rand_sample_idx = random.randint(0, df.shape[0] - 1)
@@ -332,7 +333,7 @@ def apply_fairsmote(dataset, protected_attribute, class_column):
         final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
                                 (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
-    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == 1) & (final_df[protected_attribute] == 0)])}")
+    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
     
     return final_df
 
@@ -415,71 +416,42 @@ def apply_fairsmote_singleouts(dataset, protected_attribute, class_column):
         final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
                                    (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
-    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == 1) & (final_df[protected_attribute] == 0)])}")
+    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
 
     return final_df
 
-def apply_new(dataset, protected_attribute, epsilon):
+def apply_new(dataset, protected_attribute, epsilon, class_column):
 
-    # Define possible class column names
-    possible_class_names = {'Probability', 'class', 'c'}
-
-    # Find the intersection between dataset columns and possible class names
-    class_candidates = list(set(dataset.columns) & possible_class_names)
-
-    if class_candidates:
-        class_column = class_candidates[0]  # Pick the first match
-    elif dataset.columns[-1] != 'single_out':  
-        class_column = dataset.columns[-1]  # Pick the last column unless it's 'single_out'
-    else:
-        class_column = dataset.columns[-2]  # Pick the second-to-last column if last is 'single_out'
-
-    print(f"Selected class column: {class_column}")
-    #print(f"Detected class column: {class_column}")
-    #print(f'Protected attribute: {protected_attribute}')
-
-    # Define the combinations explicitly (this is what you want)
-    all_combinations = [(1, 0), (1, 1), (0, 0), (0, 1)]
-    #print(f"all_combinations: {all_combinations}")
-
-    # Initialize category_counts with zeros for the specified combinations
-    category_counts = {combination: 0 for combination in all_combinations}
-
-    #print(f"class column: {class_column}\nprotected attribute: {protected_attribute}")
-    # Count occurrences for each category (class label, protected attribute)
-    for combination, count in dataset.groupby([class_column, protected_attribute]).size().items():
-        category_counts[combination] = count
+     # Count occurrences for each category (class label, protected attribute)
+    category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
     print(f"Category counts: {category_counts}")
 
     # Identify the majority class (the category with the maximum count)
     majority_class = max(category_counts, key=category_counts.get)
     maximum_count = category_counts[majority_class]
 
-    print(f"Majority class: {majority_class}, Count: {maximum_count}")
-
     # Identify minority classes (all categories that aren't the majority)
     minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
-    print(f"Minority classes and their counts: {minority_classes}")
 
     # Compute the number of samples to generate for each minority class
     samples_to_increase = {
         class_tuple: maximum_count - count for class_tuple, count in minority_classes.items()
     }
-    #print(f"Samples to increase: {samples_to_increase}")
 
-    # Separate dataframes for majority and minority classes
+    # Separate dataframes:
+    # 1. Majority class (unchanged)
     df_majority = dataset[(dataset[class_column] == majority_class[0]) & 
                           (dataset[protected_attribute] == majority_class[1])]
-    #print(f"Majority class dataframe shape: {df_majority.shape}")
 
+    # 2. Minority class: Separate rows where single_out == 1 (for SMOTE) and single_out == 0 (unchanged)
     df_minority = {
-        class_tuple: dataset[(dataset[class_column] == class_tuple[0]) & 
-                             (dataset[protected_attribute] == class_tuple[1])]
+        class_tuple: dataset[
+            (dataset[class_column] == class_tuple[0]) & 
+            (dataset[protected_attribute] == class_tuple[1])
+        ]
         for class_tuple in minority_classes
     }
-    #print("Minority class dataframes:")
-    #for class_tuple, df in df_minority.items():
-    #    print(f"  - {class_tuple}: shape {df.shape}")
+
 
     # Convert categorical columns to string if necessary
     for col in [protected_attribute, class_column]:
@@ -493,7 +465,6 @@ def apply_new(dataset, protected_attribute, epsilon):
     generated_data = []
     for class_tuple in df_minority:
         num_samples = samples_to_increase[class_tuple]
-        print(num_samples)
 
         # Select only numeric columns from the minority class
         df_numeric = df_minority[class_tuple].select_dtypes(include=[np.number])
@@ -527,8 +498,7 @@ def apply_new(dataset, protected_attribute, epsilon):
                                 (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
 
-    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == 1) & (final_df[protected_attribute] == 0)])}")
-    print(f"Final dataset shape after SMOTE: {final_df.shape}")
+    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
 
     cleaned_final_df = final_df.applymap(unpack_value)
     cleaned_final_df = final_df.applymap(standardize_binary)
