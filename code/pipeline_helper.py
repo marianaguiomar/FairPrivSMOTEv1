@@ -1,6 +1,7 @@
 import csv
 import ast
 import os
+import numpy as np
 
 def get_key_vars(file_name, key_vars_file):
     '''
@@ -78,7 +79,7 @@ def process_protected_attributes(file_name, protected_attributes_file_path):
     return protected_attr_dict[file_name]
 
 
-def check_protected_attribute(data, class_column, protected_attribute):
+def check_protected_attribute(data, class_column, protected_attribute, singleouts=False):
     # Check if the column contains only 1s and 0s and has at least one of each
     if not set(data[protected_attribute].dropna()) <= {0, 1}:
         print(f"Protected attribute '{protected_attribute}' column does not contain only 1s and 0s.")
@@ -105,6 +106,26 @@ def check_protected_attribute(data, class_column, protected_attribute):
     if missing_combinations:
         print(f"Missing combinations: {missing_combinations}")
         return False  # Skip to next file if any combination is missing
+    
+    if singleouts==True:
+        print("GOT HERE!!!")
+        # Additional check: At least three rows with highest_risk == 1 for missing combinations
+        missing_high_risk_combinations = []
+        for comb in combinations:
+            df_minority = data[(data[class_column] == comb[0]) & (data[protected_attribute] == comb[1])]
+              # Print the subset and its highest_risk column
+            print(f"Subset for {comb}:\n{df_minority[['highest_risk']]}\n")
+            # Select numeric columns
+            df_numeric = df_minority[df_minority['highest_risk'] == 1].select_dtypes(include=[np.number])
+            
+            if df_numeric.empty or len(df_numeric) <3:
+                missing_high_risk_combinations.append(comb)
+
+        if missing_high_risk_combinations:
+            print(f"Missing high-risk combinations: {missing_high_risk_combinations}")
+            return False  # Skip if missing combinations with highest_risk == 1 and at least 3 numeric rows
+         
+
 
     # If all checks pass, return True
     return True

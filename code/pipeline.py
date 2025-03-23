@@ -49,9 +49,16 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
             for knn in knns:
                 for per in pers:
                     for qi in range(len(key_vars)):
+                        input_file_name = os.path.splitext(os.path.basename(file_name))[0]
+                        final_file_name = f'{output_folder}/{input_file_name}_{epsilon}-privateSMOTE_QI{qi}_knn{knn}_per{per}.csv'
+                        # Check if the file already exists
+                        if os.path.exists(final_file_name):
+                            print(f"Skipping {final_file_name} (already exists)")
+                            continue  # Skip to the next iteration
+
                         print(f"transforming file {file_name} with epsilon={epsilon}, knn={knn}, per={per} and qi={qi}")
                         start_time = time.time()
-                        '''
+                        
                         subprocess.run([
                                             'python', 'code/main/privatesmote.py',  # Call privatesmote.py
                                             '--input_file', dataset_path,   # Path to the input file
@@ -63,7 +70,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
                                             '--output_folder', output_folder,
                                             '--nqi', str(qi)
                                         ])
-                        '''
+                        
                         end_time = time.time()
                         elapsed_time = end_time - start_time
                         filename_without_csv = os.path.splitext(os.path.basename(file_name))[0]
@@ -86,7 +93,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
-    smote_all(datasets_to_fair, final_output_folder)
+    smote_all(datasets_to_fair, final_output_folder, "class")
 
     ######################## UNITE TIMING METRICS ################################
     
@@ -98,8 +105,95 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
 
     process_files_in_folder(timing_folder, dataset_folder)
 
+    ######################## METRICS ########################
+
+
+def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
+    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
+    # creating output folder
+    input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
+    output_folder = os.path.join("test", "inputs_privatized", input_folder_name)
+    os.makedirs(output_folder, exist_ok=True)
+
+    #saving time to process
+    timing_privatizing_results = []
+
+
+    # getting all files to process
+    for file_name in os.listdir(dataset_folder):
+        dataset_path = os.path.join(dataset_folder, file_name)  # Full path to the dataset file
+        
+        if not os.path.isfile(dataset_path):  # Skip if not a file (e.g., a directory)
+            continue
+        key_vars = get_key_vars(file_name, key_vars_file)  # Fetch key_vars for the file
+
+    ######################## STEP 1: PRIVATIZE ORIGINAL DATASET ################################
+        for epsilon in epsilons:
+            for knn in knns:
+                for per in pers:
+                    for qi in range(len(key_vars)):
+                        input_file_name = os.path.splitext(os.path.basename(file_name))[0]
+                        final_file_name = f'{output_folder}/{input_file_name}_{epsilon}-privateSMOTE_QI{qi}_knn{knn}_per{per}.csv'
+                        # Check if the file already exists
+                        if os.path.exists(final_file_name):
+                            print(f"Skipping {final_file_name} (already exists)")
+                            continue  # Skip to the next iteration
+
+                        print(f"transforming file {file_name} with epsilon={epsilon}, knn={knn}, per={per} and qi={qi}")
+                        start_time = time.time()
+                        
+                        subprocess.run([
+                                            'python', 'code/main/privatesmote.py',  # Call privatesmote.py
+                                            '--input_file', dataset_path,   # Path to the input file
+                                            '--knn', str(knn),            # Nearest Neighbor for interpolation
+                                            '--per', str(per),            # Amount of new cases to replace the original
+                                            '--epsilon', str(epsilon),    # Amount of noise
+                                            '--k', '5',                   # Group size for k-anonymity (you can adjust if needed)
+                                            '--key_vars', *key_vars[qi],       # List of quasi-identifiers (QI)
+                                            '--output_folder', output_folder,
+                                            '--nqi', str(qi)
+                                        ])
+                        
+                        end_time = time.time()
+                        elapsed_time = end_time - start_time
+                        filename_without_csv = os.path.splitext(os.path.basename(file_name))[0]
+                        timing_privatizing_results.append({"filename": f"{filename_without_csv}_{epsilon}-privateSMOTE_QI{qi}_knn{knn}_per{per}.csv", "time taken (s)": elapsed_time})
+
+    #save timing results
+    print(output_folder)
+    timing_df = pd.DataFrame(timing_privatizing_results)
+
+    #getting the timing folder
+    timing_folder = os.path.join("test", "times", input_folder_name)
+    if not os.path.exists(timing_folder):
+        os.makedirs(timing_folder)
+    timing_csv_path = os.path.join(timing_folder, "timing_1b_privatizing.csv")
+    timing_df.to_csv(timing_csv_path, index=False)
+
+    ######################## STEP 2: FAIR THE PRIVATIZED DATASET ################################
+    datasets_to_fair = f"{output_folder}"
+    final_output_folder = f"test/outputs_2_a/{input_folder_name}"
+    if not os.path.exists(final_output_folder):
+        os.makedirs(final_output_folder)
+
+    smote_singleouts(datasets_to_fair, final_output_folder, "class")
+
+    ######################## UNITE TIMING METRICS ################################
+    
+    process_files_in_folder(timing_folder, dataset_folder)
+    time_priv =  f"test/times/{input_folder_name}/timing_1b_privatizing.csv"
+    time_fair =  f"test/times/{input_folder_name}/timing_1b_fairing.csv"
+    output_combo = f"test/times/{input_folder_name}/timing_1b_total.csv"
+    sum_times_fuzzy_match(output_combo,time_priv, time_fair)
+
+    process_files_in_folder(timing_folder, dataset_folder)
+
+    ######################## METRICS ########################
 
 
 
 
-method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
+
+
+#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
+method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")

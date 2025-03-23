@@ -336,30 +336,13 @@ def apply_fairsmote(dataset, protected_attribute, class_column):
     
     return final_df
 
-def apply_fairsmote_singleouts(dataset, protected_attribute):
-    print(dataset.shape[0])
-    # Define possible class column names
-    possible_class_names = {'Probability', 'class', 'c'}
-
-    # Find the intersection between dataset columns and possible class names
-    class_candidates = list(set(dataset.columns) & possible_class_names)
-
-    if class_candidates:
-        class_column = class_candidates[0]  # Pick the first match
-    elif dataset.columns[-1] != 'single_out':  
-        class_column = dataset.columns[-1]  # Pick the last column unless it's 'single_out'
-    else:
-        class_column = dataset.columns[-2]  # Pick the second-to-last column if last is 'single_out'
-
-    single_out_col = "single_out" if "single_out" in dataset.columns else "highest_risk"
-
-    print(f"Selected class column: {class_column}")
-    # Ensure "single_out" exists before proceeding
-    if "single_out" not in dataset.columns and "highest_risk" not in dataset.columns:
-        raise ValueError("Column single_out not found in dataset")
+def apply_fairsmote_singleouts(dataset, protected_attribute, class_column):
+    single_out_col = "highest_risk"
 
     # Count occurrences for each category (class label, protected attribute)
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
+    print(f"Category counts: {category_counts}")
+
 
     # Determine the majority class (the category with the maximum count)
     majority_class = max(category_counts, key=category_counts.get)
@@ -377,8 +360,6 @@ def apply_fairsmote_singleouts(dataset, protected_attribute):
     # 1. Majority class (unchanged)
     df_majority = dataset[(dataset[class_column] == majority_class[0]) & 
                           (dataset[protected_attribute] == majority_class[1])]
-    
-    print(f"  - df_majority before : {len(dataset[(dataset[class_column] == 1) & (dataset[protected_attribute] == 0)])}")
 
 
     # 2. Minority class: Separate rows where single_out == 1 (for SMOTE) and single_out == 0 (unchanged)
@@ -401,7 +382,6 @@ def apply_fairsmote_singleouts(dataset, protected_attribute):
     generated_data = []
     for class_tuple in df_minority:
         num_samples = samples_to_increase[class_tuple]
-        print(num_samples)
 
         # Select only rows where "single_out" == 1
         df_selected_singleout = df_minority[class_tuple][df_minority[class_tuple][single_out_col] == 1].drop(columns=[single_out_col])
@@ -430,14 +410,13 @@ def apply_fairsmote_singleouts(dataset, protected_attribute):
     final_df = pd.concat([df_majority] + generated_data, ignore_index=True)
     #final_df = pd.concat([df_majority] + final_data, ignore_index=True)
     
+    print("\nFinal subclass sizes:")        
     for class_tuple in df_minority:
         final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
                                    (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
-
-        
     print(f"  - df_majority final: {len(final_df[(final_df[class_column] == 1) & (final_df[protected_attribute] == 0)])}")
-    print(final_df.shape[0])
+
     return final_df
 
 def apply_new(dataset, protected_attribute, epsilon):
