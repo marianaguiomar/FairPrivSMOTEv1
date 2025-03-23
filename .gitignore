@@ -89,6 +89,14 @@ priv_datasets/
 linkability_results/
 test/
 
+combined_test/averages
+combined_test/datasets
+combined_test/fairness_results
+combined_test/linkability_results
+combined_test/other
+combined_test/times
+
+
 priv39/
 
 priv39/lib/python3.9/site-packages/pyarrow/libarrow.1801.dylib
