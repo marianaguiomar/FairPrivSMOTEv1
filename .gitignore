@@ -87,6 +87,7 @@ node_modules/
 fair_datasets/
 priv_datasets/
 linkability_results/
+test/
 
 priv39/
 

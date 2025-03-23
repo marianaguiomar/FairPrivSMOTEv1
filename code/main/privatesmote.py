@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import argparse
+import os
 
 
 def keep_numbers(df):
@@ -128,7 +129,7 @@ class PrivateSMOTE:
         return encoded_data
 
     def over_sampling(self):
-        print("epsilon: ", self.epsilon, " per= ", self.N, " knn = ", self.knn)
+        #print("epsilon: ", self.epsilon, " per= ", self.N, " knn = ", self.knn)
         """Find the nearest neighbors and populate with new data"""
         N = int(self.N)
         # find highest-risk cases
@@ -139,8 +140,8 @@ class PrivateSMOTE:
         # Initialize the synthetic samples with the number of samples and attributes
         self.synthetic = np.empty(
             shape=(self.X_train_shape[0] * N, self.X_train_shape[1] + 1), dtype='float32')
-        print("all sample: ", self.samples.shape)
-        print("n highest risk: ", self.X_train_shape)
+        #print("all sample: ", self.samples.shape)
+        #print("n highest risk: ", self.X_train_shape)
         self.x = self.enc_data()
         # Find the minimum value for each numerical column
         self.min_values = [self.x[:, i].min(
@@ -160,7 +161,7 @@ class PrivateSMOTE:
         #for i, data_point in enumerate(self.standardized_data):
         #    print(f"Index i: {i}, Data Point: {data_point}")  # Print each row of standardized_data
 
-        print(f"Highest Risk Indices: {highest_risk_indices}")  # Print highest_risk_indices
+        #print(f"Highest Risk Indices: {highest_risk_indices}")  # Print highest_risk_indices
 
         for i, _ in enumerate(self.standardized_data):
             if i in highest_risk_indices:
@@ -309,5 +310,9 @@ if __name__ == "__main__":
     #newDf.to_csv(
     #    f'fair_datasets/new_priv_smote/synth_data/compas/compas_{args.epsilon}-privateSMOTE_QI3_knn{args.knn}_per{args.per}.csv', index=False)
     
+    # Create the output file path
+    input_file_name = os.path.splitext(os.path.basename(args.input_file))[0]
+    output_file = f'{args.output_folder}/{input_file_name}_{args.epsilon}-privateSMOTE_QI{args.nqi}_knn{args.knn}_per{args.per}.csv'
+
     newDf.to_csv(
-        f'{args.output_folder}/{args.input_file}_{args.epsilon}-privateSMOTE_QI{args.nqi}_knn{args.knn}_per{args.per}.csv', index=False)
+        f'{args.output_folder}/{input_file_name}_{args.epsilon}-privateSMOTE_QI{args.nqi}_knn{args.knn}_per{args.per}.csv', index=False)

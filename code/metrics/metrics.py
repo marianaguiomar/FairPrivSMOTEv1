@@ -473,9 +473,9 @@ def linkability_csv(linkability_file_list):
 
 
 #folder_path = "fair_datasets/new_priv_smoted/synth_data/adult"  # Replace with your folder path
-folder_path = "combined_test/datasets/priv_new/priv"  # Replace with your folder path
-all_files = os.listdir(folder_path)
-file_list = [os.path.join(folder_path, f) for f in all_files if f.endswith('.csv')]
+#folder_path = "combined_test/datasets/priv_new/priv"  # Replace with your folder path
+#all_files = os.listdir(folder_path)
+#file_list = [os.path.join(folder_path, f) for f in all_files if f.endswith('.csv')]
 
 linkability_folder_path = "combined_test/linkability_results/combined_test/datasets/old/original"  # Replace with your folder path
 linkability_all_files = os.listdir(linkability_folder_path)
@@ -505,8 +505,8 @@ folders_linkability = [
 
 # Output file where results will be saved
 # Call the function to process the folders and save the results
-#process_folders_linkability(folders_linkability, 'combined_test/averages/linkability_summary.csv')
-process_folders_fairness(folders_fairness, 'combined_test/averages/fairness_summary.csv')
+process_folders_linkability(folders_linkability, 'combined_test/averages/linkability_summary.csv')
+#process_folders_fairness(folders_fairness, 'combined_test/averages/fairness_summary.csv')
 
 '''
 file_list = ["fair_datasets/original/adult_sex/adult_sex_input_true.csv", 

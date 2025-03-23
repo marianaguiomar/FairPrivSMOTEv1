@@ -25,7 +25,7 @@ def fix_filenames(csv_file):
     print(f"Fixed filenames in {csv_file}")
 
 
-def sum_times_fuzzy_match(folder_path, file_pairs):
+def sum_times_fuzzy_match(output_path, file_priv_path, file_fair_path):
     """
     Sums the 'Time Taken (seconds)' for rows with matching dataset numbers and key parameters from different pairs of CSV files.
     
@@ -38,64 +38,42 @@ def sum_times_fuzzy_match(folder_path, file_pairs):
     """
 
     def extract_details(filename):
-        """
-        Extracts dataset number, epsilon (E), QI, knn, and per values from a filename.
-        Examples:
-        - "8.csv_0.1-privateSMOTE_QI0_knn1_per1" -> (8, 0.1, QI0, knn1, per1)
-        - "fairsmote_ds8_0.1-privateSMOTE5_QI0_knn1_per1.csv" -> (8, 0.1, QI0, knn1, per1)
-        """
-        #dataset_match =  re.search(r"fairsmote_ds(\d+)", filename) or re.search(r"(\d+)\.csv", filename)
+        dataset_match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE',filename)
         epsilon_match = re.search(r"_(\d+\.\d+)-", filename)
         qi_match = re.search(r"QI(\d+)", filename)
         knn_match = re.search(r"knn(\d+)", filename)
         per_match = re.search(r"per(\d+)", filename)
 
-        #dataset = dataset_match.group(1) if dataset_match else None
-        if "adult" in filename:
-            title = "adult"
-        elif "compas" in filename:
-            title = "compas"
-        epsilon = epsilon_match.group(1) if epsilon_match else None
-        qi = qi_match.group(0) if qi_match else None  # Keep 'QI0' format
-        knn = knn_match.group(0) if knn_match else None  # Keep 'knn1' format
-        per = per_match.group(0) if per_match else None  # Keep 'per1' format
+        dataset_name = dataset_match.group(1)    
+        epsilon = epsilon_match.group(1) 
+        qi = qi_match.group(0)
+        knn = knn_match.group(0)
+        per = per_match.group(0)
 
-        #print(f"{filename}, ds{dataset}, epsilon {epsilon}, {qi}, {knn}, {per}")
+        return dataset_name, epsilon, qi, knn, per
 
-        #return dataset, epsilon, qi, knn, per
-        return title, epsilon, qi, knn, per
 
-    for file1, file2, output_file in file_pairs:
-        file1_path = os.path.join(folder_path, file1)
-        file2_path = os.path.join(folder_path, file2)
-        output_path = os.path.join(folder_path, output_file)
+    # Read both CSV files
+    df1 = pd.read_csv(file_priv_path)
+    df2 = pd.read_csv(file_fair_path)
 
-        # Read both CSV files
-        df1 = pd.read_csv(file1_path)
-        df2 = pd.read_csv(file2_path)
+    # Extract matching details
+    df1[["Dataset", "Epsilon", "QI", "KNN", "PER"]] = df1["filename"].apply(lambda x: pd.Series(extract_details(x)))
+    df2[["Dataset", "Epsilon", "QI", "KNN", "PER"]] = df2["filename"].apply(lambda x: pd.Series(extract_details(x)))
 
-        # Extract matching details
-        df1[["Dataset", "Epsilon", "QI", "KNN", "PER"]] = df1["Filename"].apply(lambda x: pd.Series(extract_details(x)))
-        df2[["Dataset", "Epsilon", "QI", "KNN", "PER"]] = df2["Filename"].apply(lambda x: pd.Series(extract_details(x)))
+    # Merge based on dataset number and key parameters
+    merged_df = pd.merge(df1, df2, on=["Dataset", "Epsilon", "QI", "KNN", "PER"], suffixes=("_file_priv", "_file_fair"))
 
-        print("df1 extracted details:")
-        print(df1[["Filename", "Dataset", "Epsilon", "QI", "KNN", "PER"]])
-        print("\ndf2 extracted details:")
-        print(df2[["Filename", "Dataset", "Epsilon", "QI", "KNN", "PER"]])
+    # Sum the 'Time Taken (seconds)' columns
+    merged_df["time taken (s)"] = merged_df["time taken (s)_file_priv"] + merged_df["time taken (s)_file_fair"]
 
-        # Merge based on dataset number and key parameters
-        merged_df = pd.merge(df1, df2, on=["Dataset", "Epsilon", "QI", "KNN", "PER"], suffixes=("_file1", "_file2"))
+    # Keep only necessary columns
+    final_df = merged_df[["filename_file_priv", "time taken (s)"]].rename(columns={"filename_file_priv": "filename"})
 
-        # Sum the 'Time Taken (seconds)' columns
-        merged_df["Time Taken (seconds)"] = merged_df["Time Taken (seconds)_file1"] + merged_df["Time Taken (seconds)_file2"]
+    # Save to CSV
+    final_df.to_csv(output_path, index=False)
 
-        # Keep only necessary columns
-        final_df = merged_df[["Filename_file1", "Total Time Taken (seconds)"]].rename(columns={"Filename_file1": "Filename"})
-
-        # Save to CSV
-        final_df.to_csv(output_path, index=False)
-
-        print(f"Saved summed times to {output_file}")
+    print(f"Saved summed times to {output_path}")
 
 def count_rows_in_csv(dataset_file):
     """Function to count the number of rows in a given CSV file."""
@@ -106,10 +84,10 @@ def count_rows_in_csv(dataset_file):
         csv_reader = csv.reader(file)
         next(csv_reader)
         row_count = sum(1 for row in csv_reader)  # Count rows
-    print(f"rows in {dataset_file} = {row_count}")
+    #print(f"rows in {dataset_file} = {row_count}")
     return row_count
 
-def process_time_data(file_path, data_type):
+def process_time_data(file_path, original_folder):
     print(f"file path: {file_path}")
     # Initialize variables
     total_time = 0
@@ -122,12 +100,12 @@ def process_time_data(file_path, data_type):
         header = next(csv_reader)  # Read header
 
         # Add new column headers if they don't exist
-        if "Number of Samples" not in header:
-            header.append("Number of Samples")
-        if "Time per Sample" not in header:
-            header.append("Time per Sample")
-        if "Time per 1000 Samples" not in header:
-            header.append("Time per 1000 Samples")
+        if "number of samples" not in header:
+            header.append("number of samples")
+        if "time per sample" not in header:
+            header.append("time per sample")
+        if "time per 1000 Samples" not in header:
+            header.append("time per 1000 samples")
 
         updated_rows.append(header)
         for row in csv_reader:
@@ -136,21 +114,11 @@ def process_time_data(file_path, data_type):
                 time_taken = float(time_taken)  # Convert time to float
                 total_time += time_taken  # Add time to total
 
-                # Extract the dataset identifier from the filename (e.g., "fairsmote_8_0.1" -> 8)
-                if (data_type == "priv"):
-                    #dataset_number = filename.split('_')[1]  # Extract the number (e.g., "8")
-                    #dataset_number = re.sub(r"\.csv.*", "", filename)  # Remove non-digit characters except the number at the start
-                    dataset_number = int(re.search(r"ds(\d+)", filename).group(1))  # Remove non-digit characters except the number at the start
+                match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE',filename)
+                dataset_name = match.group(1)        
 
-                    dataset_file = f"priv_datasets/original/{dataset_number}.csv"  # Create the path to the dataset file (e.g., "8.csv")
-                else:
-                    # Remove 'fairsmote_' at the start and '_<number>' at the end using regular expressions
-                    #cleaned_filename = re.sub(r"^fairsmote_", "", filename)  # Remove 'fairsmote_' at the beginning
-                    #cleaned_filename = re.sub(r"_input_true_\d+(\.\d+)?$", "", cleaned_filename)  # Remove '_<number>' at the end
-                    cleaned_filename =  re.search(r"fairsmote_(.*?)_input_true", filename).group(1)
-                    #cleaned_filename = re.sub(r"_input_true.*$", "", filename)
-                    dataset_file = f"fair_datasets/original/{cleaned_filename}/{cleaned_filename}_input_true.csv"
-                
+                dataset_file = f"{original_folder}/{dataset_name}.csv"
+
                 try:
                     # Count the rows in the original dataset
                     num_rows = count_rows_in_csv(dataset_file)
@@ -180,25 +148,16 @@ def process_time_data(file_path, data_type):
 
 # Example usage:
 
-def process_files_in_folder(folder_path):
-    # Loop through all the files in the folder
+def process_files_in_folder(folder_path, original_folder):
     for file_name in os.listdir(folder_path):
-        # Make sure to check if the file is a CSV
-        if file_name.endswith('.csv') and file_name.startswith("timing"):
-            data_type = ""
-            # Determine the data type based on whether 'priv' is in the file name
-            #if 'newfair_priv' in file_name or 'replaced_priv' in file_name:
-            if 'priv' in file_name:
-                data_type = "priv"
-            else:
-                data_type = "fair"    
+        if file_name.endswith('.csv'):            
 
             file_path = os.path.join(folder_path, file_name)  # Get the full path of the file
 
             df = pd.read_csv(file_path)
-            if "Number of Samples" not in df.columns:
+            if "number of samples" not in df.columns:
                 # Process the time data for this file
-                process_time_data(file_path, data_type)
+                process_time_data(file_path, original_folder)
                 
             '''
             # Print the results
@@ -219,24 +178,24 @@ def process_csv_folder(folder_path, output_file="combined_test/times/summary.csv
             df = pd.read_csv(file_path)
 
             # Ensure required columns exist
-            required_cols = {"Time Taken (seconds)", "Number of Samples", "Time per Sample", "Time per 1000 Samples"}
+            required_cols = {"time taken (s)", "number of samples", "time per sample", "time per 1000 Samples"}
 
             if not required_cols.issubset(df.columns):
                 print(f"Skipping {file_name} (missing required columns)")
                 continue  # Skip files that don’t have the expected structure
             
             # Select numerical columns to calculate stats (excluding "Filename" and "Number of Samples")
-            numeric_cols = ["Time Taken (seconds)", "Time per Sample", "Time per 1000 Samples"]
+            numeric_cols = ["time taken (s)", "time per sample", "time per 1000 Samples"]
 
             # Compute mean and standard deviation
             file_summary = {
-                "File": file_name,
-                "Mean Time Taken (s)": df["Time Taken (seconds)"].mean(),
-                "Std Time Taken (s)": df["Time Taken (seconds)"].std(),
-                "Mean Time per Sample": df["Time per Sample"].mean(),
-                "Std Time per Sample": df["Time per Sample"].std(),
-                "Mean Time per 1000 Samples": df["Time per 1000 Samples"].mean(),
-                "Std Time per 1000 Samples": df["Time per 1000 Samples"].std(),
+                "file": file_name,
+                "mean time taken (s)": df["time taken (s)"].mean(),
+                "std time taken (s)": df["time taken (s)"].std(),
+                "mean time per sample": df["time per sample"].mean(),
+                "std time per sample": df["time per sample"].std(),
+                "mean time per 1000 samples": df["time per 1000 samples"].mean(),
+                "std time per 1000 samples": df["time per 1000 samples"].std(),
             }
             
             summary_data.append(file_summary)  # Add results to the summary list
@@ -248,10 +207,10 @@ def process_csv_folder(folder_path, output_file="combined_test/times/summary.csv
     #summary_df.to_csv(output_file, index=False)
 
 # Example usage:
-folder_path = 'combined_test/times/to_sum'  # Replace with your actual folder path
-csv_files = [f for f in os.listdir(folder_path) if f.endswith(".csv")]
+#folder_path = 'combined_test/times/to_sum'  # Replace with your actual folder path
+#csv_files = [f for f in os.listdir(folder_path) if f.endswith(".csv")]
 #process_files_in_folder(folder_path)
-process_csv_folder(folder_path)
+#process_csv_folder(folder_path)
 '''
 for file in csv_files:
     data_type = ""

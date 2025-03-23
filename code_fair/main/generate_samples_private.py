@@ -9,6 +9,8 @@ from scipy.spatial import distance as dist
 from scipy.spatial import distance
 from sklearn.neighbors import NearestNeighbors as NN
 import itertools
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'cleanup')))
 from clean import unpack_value, standardize_binary
 #from sensitive import label_imbalance
 
@@ -38,15 +40,22 @@ def get_ngbr_idx(df, knn):
 
 
 def generate_samples(no_of_samples,df):
+
+    #print(df.head())  # Print the first few rows to inspect the data
+    #print(df.info())  # Check column names, data types, and missing values
+    #print(df.isna().sum())  # Check for missing values
+    #print(df.dtypes)        # Check column data types
     
     total_data = df.values.tolist()
-    knn = NN(n_neighbors=5,algorithm='auto').fit(df)
+    knn = NN(n_neighbors=5,algorithm='auto').fit(df.values)
     
     for _ in range(no_of_samples):
         cr = 0.8
         f = 0.8
+        
         parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, knn)
         new_candidate = []
+        
         for key,value in parent_candidate.items():
             if isinstance(parent_candidate[key], bool):
                 new_candidate.append(parent_candidate[key] if cr < random.random() else not parent_candidate[key])
@@ -65,12 +74,13 @@ def generate_samples(no_of_samples,df):
     
     final_df = pd.DataFrame(total_data)
     final_df.columns = df.columns
-
     return final_df
+
+
 
 def generate_samples_new(no_of_samples, df, epsilon):
     total_data = df.values.tolist()
-    knn = NN(n_neighbors=5, algorithm='auto').fit(df)
+    knn = NN(n_neighbors=5, algorithm='auto').fit(df.values)
 
     # Compute min, max, and std values for each column
     min_values = [np.min(df.iloc[:, i]) if not df.iloc[:, i].dtype == 'object' else np.nan for i in range(df.shape[1])]
@@ -138,7 +148,7 @@ def generate_samples_new(no_of_samples, df, epsilon):
 def generate_samples_new_replaced(no_of_samples, df, epsilon):
     total_data = df.values.tolist()
 
-    knn = NN(n_neighbors=5, algorithm='auto').fit(df)
+    knn = NN(n_neighbors=5, algorithm='auto').fit(df.values)
 
     # Compute min, max, and std values for each column
     min_values = [np.min(df.iloc[:, i]) if not df.iloc[:, i].dtype == 'object' else np.nan for i in range(df.shape[1])]
@@ -244,14 +254,10 @@ def generate_samples_new_replaced(no_of_samples, df, epsilon):
 
     return final_df
 
-def apply_fairsmote(dataset, protected_attribute):
-    class_column = dataset.columns[-1]  # Automatically select the last column as the class column
-    #print(f"Detected class column: {class_column}")
-    #print(f'Protected attribute: {protected_attribute}')
-
+def apply_fairsmote(dataset, protected_attribute, class_column):
     # Count occurrences for each category (class label, protected attribute)
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
-    #print(f"Category counts: {category_counts}")
+    print(f"Category counts: {category_counts}")
 
     # Determine the majority class (the category with the maximum count)
     majority_class = max(category_counts, key=category_counts.get)
@@ -289,7 +295,7 @@ def apply_fairsmote(dataset, protected_attribute):
             df_majority[col] = df_majority[col].astype(str)
             for class_tuple in df_minority:
                 df_minority[class_tuple][col] = df_minority[class_tuple][col].astype(str)
-
+    
     # Generate synthetic samples for each minority class
     generated_data = []
     for class_tuple in df_minority:
@@ -312,7 +318,7 @@ def apply_fairsmote(dataset, protected_attribute):
                 print(f"Skipping generation for {class_tuple} as it has no numeric columns.")
         else:
             print(f"Skipping generation for {class_tuple} as it has no numeric columns.")
-
+        
         # Print the new size of each subclass after augmentation
         new_size = len(df_minority[class_tuple]) + num_samples
         #print(f"New size of subclass {class_tuple}: {new_size}")
@@ -327,9 +333,7 @@ def apply_fairsmote(dataset, protected_attribute):
                                 (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
     print(f"  - df_majority final: {len(final_df[(final_df[class_column] == 1) & (final_df[protected_attribute] == 0)])}")
-
-    print(f"Final dataset shape after SMOTE: {final_df.shape}")
-
+    
     return final_df
 
 def apply_fairsmote_singleouts(dataset, protected_attribute):
