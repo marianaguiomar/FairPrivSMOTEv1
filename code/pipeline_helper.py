@@ -108,13 +108,10 @@ def check_protected_attribute(data, class_column, protected_attribute, singleout
         return False  # Skip to next file if any combination is missing
     
     if singleouts==True:
-        print("GOT HERE!!!")
         # Additional check: At least three rows with highest_risk == 1 for missing combinations
         missing_high_risk_combinations = []
         for comb in combinations:
             df_minority = data[(data[class_column] == comb[0]) & (data[protected_attribute] == comb[1])]
-              # Print the subset and its highest_risk column
-            print(f"Subset for {comb}:\n{df_minority[['highest_risk']]}\n")
             # Select numeric columns
             df_numeric = df_minority[df_minority['highest_risk'] == 1].select_dtypes(include=[np.number])
             

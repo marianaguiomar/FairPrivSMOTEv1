@@ -62,7 +62,7 @@ def smote_singleouts(input_folder, output_folder, class_column = None):
             print(f"Processing time: {total_time} seconds\n")
 
     # Save timing results to CSV
-    if not timing_results.empty:
+    if timing_results:
         timing_df = pd.DataFrame(timing_results)
         timing_df = timing_df.sort_values(by=timing_df.columns[0], ascending=True)
         input_folder_name = os.path.basename(os.path.normpath(input_folder))
@@ -126,7 +126,7 @@ def smote_all(input_folder, output_folder, class_column=None):
             
 
     # Save timing results to CSV
-    if not timing_results.empty:
+    if timing_results:
         timing_df = pd.DataFrame(timing_results)
         timing_df = timing_df.sort_values(by=timing_df.columns[0], ascending=True)
         input_folder_name = os.path.basename(os.path.normpath(input_folder))
