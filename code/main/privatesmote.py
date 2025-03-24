@@ -9,6 +9,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import argparse
 import os
+import json
 
 
 def keep_numbers(df):
@@ -128,7 +129,7 @@ class PrivateSMOTE:
                 encoded_data[col_name].astype(int))
         return encoded_data
 
-    def over_sampling(self):
+    def over_sampling(self, binary_columns = None, binary_percentages = None):
         #print("epsilon: ", self.epsilon, " per= ", self.N, " knn = ", self.knn)
         """Find the nearest neighbors and populate with new data"""
         N = int(self.N)
@@ -167,7 +168,10 @@ class PrivateSMOTE:
             if i in highest_risk_indices:
                 nnarray = self.neighbors.kneighbors(self.standardized_data[i].reshape(1, -1),
                                                     return_distance=False)[0]
-                self._populate(N, i, nnarray)
+                if binary_columns and binary_percentages:
+                    self._populate(N, i, nnarray, binary_columns, binary_percentages)
+                else:
+                    self._populate(N, i, nnarray)
         
         # assign highest-risk bool value
         highest_risk_col = np.ones((self.synthetic.shape[0], 1), dtype=self.synthetic.dtype)
@@ -189,9 +193,13 @@ class PrivateSMOTE:
 
         return new
 
-    def _populate(self, N, i, nnarray):
+    def _populate(self, N, i, nnarray, binary_columns = None, binary_percentages = None):
         #print("N: ", N)
         # Populate N times
+
+        binary_columns = binary_columns or set()
+        binary_percentages = binary_percentages or {}
+
         while N != 0:
             # Find index of nearest neighbour excluding the observation in comparison
             neighbour = np.random.randint(1, self.knn + 1)
@@ -212,24 +220,58 @@ class PrivateSMOTE:
                 else orig_val
                 for j, (neighbor_val, orig_val) in enumerate(zip(self.x[nnarray[neighbour]], self.x[i]))]
 
+            
             # Generate new numerical value for each column
-            new_nums_values = [orig_val + flip[j]
+            new_nums_values = []
+
+            for j, (neighbor_val, orig_val) in enumerate(zip(self.x[nnarray[neighbour]], self.x[i])):
+                if j in binary_columns:
+                    rand_val = np.random.rand()
+                    threshold = binary_percentages.get(str(j), 0.5)  # Convert `j` to string before lookup
+                    new_val = 1 if rand_val <= threshold else 0
+                
+                elif neighbor_val == orig_val and not np.isnan(self.min_values[j]) and self.min_values[j] <= orig_val + flip[j] <= self.max_values[j]:
+                    new_val = orig_val + flip[j]
+
+                elif neighbor_val == orig_val and not np.isnan(self.min_values[j]) and (self.min_values[j] > orig_val + flip[j] or orig_val + flip[j] > self.max_values[j]):
+                    new_val = orig_val - flip[j]
+
+                elif neighbor_val != orig_val and not np.isnan(self.min_values[j]) and self.min_values[j] <= orig_val + noise[j] <= self.max_values[j]:
+                    new_val = orig_val + noise[j]
+
+                elif neighbor_val != orig_val and not np.isnan(self.min_values[j]) and (self.min_values[j] > orig_val + noise[j] > self.max_values[j]):
+                    new_val = orig_val - noise[j]
+
+                else:
+                    new_val = orig_val
+
+                new_nums_values.append(new_val)
+            '''
+            new_nums_values = [
+                               1 if j in binary_columns and np.random.rand() <= binary_percentages.get(j, 0.5) 
+                               else 0 if j in binary_columns
+
+                               else orig_val + flip[j]
                                if neighbor_val == orig_val
                                and not np.isnan(self.min_values[j])
                                and self.min_values[j] <= orig_val + flip[j] <= self.max_values[j]
+
                                else orig_val - flip[j]
                                if neighbor_val == orig_val and not np.isnan(self.min_values[j])
                                and (self.min_values[j] > orig_val + flip[j]
                                     or orig_val + flip[j] > self.max_values[j])
+
                                else orig_val + noise[j]
                                if neighbor_val != orig_val and not np.isnan(self.min_values[j])
                                and self.min_values[j] <= orig_val + noise[j] <= self.max_values[j]
+
                                else orig_val - noise[j]
                                if neighbor_val != orig_val and not np.isnan(self.min_values[j])
                                and (self.min_values[j] > orig_val + noise[j] > self.max_values[j])
+
                                else orig_val
                                for j, (neighbor_val, orig_val) in enumerate(zip(self.x[nnarray[neighbour]], self.x[i]))]
-
+            '''
             # Replace the old categories if there are categorical columns
             if np.any(self.is_object_type):
                 nn_unique = [np.unique(self.x[nnarray[1: self.knn + 1], col])
@@ -278,6 +320,13 @@ if __name__ == "__main__":
                         required=True, help='Path of the output folder')
     parser.add_argument('--nqi', type=int, default="none",
                         required=True, help='qi number')
+    # Change binary_columns to accept integer indices instead of strings
+    parser.add_argument('--binary_columns', nargs='+', type=int, default=[], help='List of binary column indices')
+
+    # Keep binary_percentages as JSON, but its keys will now be integers
+    parser.add_argument('--binary_percentages', type=str, default="{}", help='JSON string mapping binary column indices to percentages')
+
+
     args = parser.parse_args()
 
     # Read data
@@ -294,8 +343,13 @@ if __name__ == "__main__":
              ] = target_encoder.fit_transform(data[data.columns[-1]])
 
     # Apply PrivateSMOTE
-    newDf = PrivateSMOTE(data, args.per, args.knn, args.epsilon,
-                         args.k, args.key_vars).over_sampling()
+    if args.binary_columns and args.binary_percentages:
+        newDf = PrivateSMOTE(data, args.per, args.knn, args.epsilon, args.k, args.key_vars).over_sampling(
+                         list(map(int, args.binary_columns)),  # Ensure indices are integers
+                         json.loads(args.binary_percentages))  # Parse JSON string
+    else:
+        newDf = PrivateSMOTE(data, args.per, args.knn, args.epsilon,
+                            args.k, args.key_vars).over_sampling() 
 
     if tgt_obj:
         newDf[newDf.columns[-2]

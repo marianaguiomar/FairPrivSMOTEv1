@@ -2,6 +2,7 @@ import csv
 import ast
 import os
 import numpy as np
+import pandas as pd
 
 def get_key_vars(file_name, key_vars_file):
     '''
@@ -126,3 +127,29 @@ def check_protected_attribute(data, class_column, protected_attribute, singleout
 
     # If all checks pass, return True
     return True
+
+def binary_columns_percentage(input_file, class_column):
+    """
+    Given an input CSV file, finds all binary columns (containing only 0s and 1s),
+    and returns their column indices and percentage of 1s, ignoring the class column.
+
+    :param input_file: Path to the CSV file
+    :param class_column: Name of the class column to exclude
+    :return: Tuple (list of binary column indices, dictionary mapping column indices to percentages)
+    """
+    # Load the data
+    df = pd.read_csv(input_file)
+
+    # Identify binary columns (only containing 0 and 1), excluding the class column
+    binary_cols = [
+        df.columns.get_loc(col)  # Convert column name to index
+        for col in df.columns if col != class_column and df[col].dropna().isin([0, 1]).all()
+    ]
+
+    # Calculate percentage of 1s for each binary column
+    binary_percentages = {
+        df.columns.get_loc(col): (df[col].sum() / len(df[col])) for col in df.columns
+        if col != class_column and df[col].dropna().isin([0, 1]).all()
+    }
+
+    return binary_cols, binary_percentages
