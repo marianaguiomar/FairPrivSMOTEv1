@@ -185,127 +185,53 @@ def smote_new(input_folder, output_folder, epsilon, timing_results, class_column
 
     return timing_results
 
-def smote_new_replaced(datasets, output_folder, dataset_type):
-    timing_results = []  # List to store timing data
-    for dataset in datasets:
-        filename = dataset  # Assuming dataset contains the filename
-        if filename.endswith(".csv"):
-            file_path = os.path.join(input_folder, filename)
-            print(f"Processing file: {filename}")
+def smote_new_replaced(input_folder, output_folder, epsilon, timing_results, class_column = None):
+    for file_name in os.listdir(input_folder):
+        file_path = os.path.join(input_folder, file_name)
+        if not os.path.isfile(file_path):
+            continue
 
-            # Load the dataset
-            data = pd.read_csv(file_path)
+        print(f"\nProcessing file: {file_path} with epsilon {epsilon}")
 
-            #data = data.drop(columns=["single_out"])
+        # Load the dataset
+        data = pd.read_csv(file_path)
 
-            if (dataset_type=="priv"):
-                # Identify the protected attribute
-                # Extract number after "ds" and before "_"
-                match = re.search(r"(\d+).csv", filename)
+        dataset_name_match = re.match(r'^(.*?).csv', file_name)
+        dataset_name = dataset_name_match.group(1)
 
-                protected_attribute = ""
-                class_column = ""
+        protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
 
-                if match:
-                    N = match.group(1)  # Extract the number
-                    print(f"Extracted N: {N}")  # Output: 8
-                else:
-                    print("No match found")
+        if class_column == None:
+            class_column = data.columns[-1]
 
-                n = int(N)
+        for protected_attribute in protected_attributes:
 
-                if n==8:
-                    protected_attribute = "V5"
-                    class_column = "class"
-                elif n==10:
-                    protected_attribute = "ESSENTIAL_DENSITY"
-                    class_column = "c"
-                elif n==37:
-                    protected_attribute = "international_plan"
-                    class_column = "class"
-                elif n==56:
-                    protected_attribute = "V40"
-                    class_column = "class"
-            else:
-                protected_attribute = "sex" 
-                class_column = "Probability"   
-            
             # Check if the protected attribute column exists
             if protected_attribute not in data.columns:
-                print(f"Protected attribute '{protected_attribute}' not found in file.")
-                continue  # Skip to next file if the column doesn't exist
+                raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
 
-            # Check if the column contains only 1s and 0s and has at least one of each
-            if not set(data[protected_attribute].dropna()) <= {0, 1}:
-                print(f"Protected attribute '{protected_attribute}' column does not contain only 1s and 0s.")
-                continue  # Skip to next file if the column contains other values
-
-            if data[protected_attribute].nunique() < 2:
-                print(f"Protected attribute '{protected_attribute}' column must have at least one 1 and one 0.")
-                continue  # Skip to next file if the column doesn't have at least one 1 and one 0
-
-            # New check: Ensure there is at least one row for each combination of protected attribute and class
-            combinations = [
-                (0, 0),  # (protected_attribute == 0 AND class == 0)
-                (0, 1),  # (protected_attribute == 0 AND class == 1)
-                (1, 0),  # (protected_attribute == 1 AND class == 0)
-                (1, 1)   # (protected_attribute == 1 AND class == 1)
-            ]
-
-            # Verify that there is at least one row for each combination
-            #print(f"class column: {class_column}\nprotected attribute: {protected_attribute}")
-            category_counts = data.groupby([class_column, protected_attribute]).size().to_dict()
-            #print(category_counts)
-
-            # Check if any of the combinations has a count of 0
-            missing_combinations = [comb for comb in combinations if category_counts.get(comb, 0) == 0]
-
-            if missing_combinations:
-                #print(f"Missing combinations: {missing_combinations}")
-                continue  # Skip to next file if any combination is missing
+            if not check_protected_attribute(data, class_column, protected_attribute):
+                continue
 
             # If all checks pass, process the file further
-            print(f"File '{filename}' is valid. Proceeding with processing...")
-
-            #protected_attribute = label_imbalance(data)[0]
-            #print(f"Protected attribute: {protected_attribute}")
-
-            # Store in list
-            #protected_attributes_data.append({"Filename": filename, "Protected Attribute": protected_attribute})
-
-            # Apply FairSMOTE
-
-            epsilons = [0.1, 0.5, 1.0, 5.0, 10.0]
-
-            for epsilon in epsilons:
-                print(f"using epsilon {epsilon}")
+            print(f"File '{file_name}' is valid. Proceeding with processing...")
                 
-                start_time = time.time()
+            start_time = time.time()
+            smote_df = apply_new_replaced(data, protected_attribute, epsilon, class_column)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            timing_results.append({"filename": f'{file_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
 
-                # Apply your function with the current epsilon
-                smote_df = apply_new_replaced(data, protected_attribute, epsilon)
-                end_time = time.time()
-                elapsed_time = end_time - start_time
-                print(f"Final dataset shape after SMOTE, after returning: {smote_df.shape}")
-
-
-                filename = os.path.splitext(filename)[0]
-                print(filename)
-                
-                # Save the processed file with "_[epsilon]" added to the filename
-                output_path = os.path.join(output_folder, f"fairsmote_{filename}_{epsilon}.csv")
-                smote_df.to_csv(output_path, index=False)
-                print(f"Saved processed file: {output_path}\n")
-
-                # Store the timing result
-                timing_results.append({"Filename": f"fairsmote_{filename}_{epsilon}", "Time Taken (seconds)": elapsed_time})
+            # Save the processed file with "_[epsilon]" added to the filename
+            output_path = os.path.join(output_folder, f"{file_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
+            smote_df.to_csv(output_path, index=False)
+            print(f"Saved processed file: {output_path}\n")
+            end_time = time.time()
+            total_time = end_time - start_time
+            print(f"Processing time: {total_time} seconds\n")
 
 
-    # Save timing results to CSV
-    timing_df = pd.DataFrame(timing_results)
-    timing_csv_path = os.path.join(output_folder, "timing_private_newfair_replaced_fair.csv")
-    timing_df.to_csv(timing_csv_path, index=False)
-    print(f"Saved processed file: {timing_csv_path}\n")
+    return timing_results
 
 
 
