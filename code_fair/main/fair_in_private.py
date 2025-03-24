@@ -73,6 +73,7 @@ def smote_singleouts(input_folder, output_folder, class_column = None):
         timing_df.to_csv(timing_csv_path, index=False)
         print(f"Saved processed file: {timing_csv_path}\n")
 
+
 def smote_all(input_folder, output_folder, class_column=None):
     timing_results = []
     print(f"input folder: {input_folder}")
@@ -136,7 +137,146 @@ def smote_all(input_folder, output_folder, class_column=None):
         timing_csv_path = os.path.join(timing_folder, "timing_1a_fairing.csv")
         timing_df.to_csv(timing_csv_path, index=False)
         print(f"Saved processed file: {timing_csv_path}\n")
-    
+
+
+def smote_v1(version, input_folder, output_folder, class_column=None):
+    timing_results = []
+    input_folder_name = os.path.basename(os.path.normpath(input_folder))
+    timing_folder = os.path.join("test", "times", input_folder_name)
+
+    print(f"input folder: {input_folder}")
+    print(f"output folder: {output_folder}")
+    for file_name in os.listdir(input_folder):
+        file_path = os.path.join(input_folder, file_name)
+        if not os.path.isfile(file_path):
+            continue
+
+        print(f"\nProcessing file: {file_path} > VERSION {version}")
+        
+        # Load the dataset
+        data = pd.read_csv(file_path)
+
+        if version == "a":
+            data = data.drop(columns=["highest_risk"])
+
+        match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file_name)
+        dataset_name = match.group(1)
+
+        protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
+        
+        if class_column == None:
+            class_column = data.columns[-1]
+
+        for protected_attribute in protected_attributes:
+            output_path = os.path.join(output_folder, f"{file_name}_{protected_attribute}.csv")
+            # Check if the file already exists
+            if os.path.exists(output_path):
+                print(f"Skipping {output_path} (already exists)")
+                fairing_file = f"{timing_folder}/timing_1a_fairing.csv"
+                
+                if fairing_file:
+                    # Read the fairing file and find the matching row
+                    df_fairing = pd.read_csv(fairing_file)
+                    match = df_fairing[df_fairing["filename"] == os.path.basename(output_path)]
+                    
+                    if not match.empty:
+                        # Append the found row to the timing_privatizing_results
+                        timing_results.append(match.iloc[0].to_dict())
+                        print(f"Copied timing data for {output_path} from {fairing_file}")
+                    else:
+                        print(f"No matching timing entry found in {fairing_file}")
+
+                continue  # Skip to the next iteration
+
+        # Check if the protected attribute column exists
+            if protected_attribute not in data.columns:
+                raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
+
+            if not check_protected_attribute(data, class_column, protected_attribute):
+                continue  # Skip to next protected attribute if the checks fail
+
+            # If all checks pass, process the file further
+            print(f"File '{file_name}' is valid. Proceeding with processing...")
+            
+            # Apply FairSMOTE
+            start_time = time.time()
+            if version == "a":  
+                smote_df = apply_fairsmote(data, protected_attribute, class_column)
+            elif version == "b":
+                smote_df = apply_fairsmote_singleouts(data, protected_attribute, class_column)
+
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            timing_results.append({"filename": file_name, "time taken (s)": elapsed_time})
+
+            
+            # Save the processed file to the output folder
+            smote_df.to_csv(output_path, index=False)
+            print(f"Saved processed file: {output_path}\n")
+            end_time = time.time()
+            total_time = end_time - start_time
+            print(f"Processing time: {total_time} seconds\n")
+
+            
+    # Save timing results to CSV
+    if timing_results:
+        timing_df = pd.DataFrame(timing_results)
+        timing_df = timing_df.sort_values(by=timing_df.columns[0], ascending=True)
+        timing_csv_path = os.path.join(timing_folder, f"timing_1{version}_fairing.csv")
+        timing_df.to_csv(timing_csv_path, index=False)
+        print(f"Saved processed file: {timing_csv_path}\n")
+
+
+def smote_v2(version, input_folder, output_folder, epsilon, timing_results, class_column = None):
+    for file_name in os.listdir(input_folder):
+        file_path = os.path.join(input_folder, file_name)
+        if not os.path.isfile(file_path):
+            continue
+
+        print(f"\nProcessing file: {file_path} with epsilon {epsilon} > VERSION {version}")
+
+        # Load the dataset
+        data = pd.read_csv(file_path)
+
+        dataset_name_match = re.match(r'^(.*?).csv', file_name)
+        dataset_name = dataset_name_match.group(1)
+
+        protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
+
+        if class_column == None:
+            class_column = data.columns[-1]
+
+        for protected_attribute in protected_attributes:
+
+            # Check if the protected attribute column exists
+            if protected_attribute not in data.columns:
+                raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
+
+            if not check_protected_attribute(data, class_column, protected_attribute):
+                continue
+
+            # If all checks pass, process the file further
+            print(f"File '{file_name}' is valid. Proceeding with processing...")
+                
+            start_time = time.time()
+            if version == "a":
+                smote_df = apply_new(data, protected_attribute, epsilon, class_column)
+            elif version == "b":
+                smote_df = apply_new_replaced(data, protected_attribute, epsilon, class_column)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
+
+            # Save the processed file with "_[epsilon]" added to the filename
+            output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
+            smote_df.to_csv(output_path, index=False)
+            print(f"Saved processed file: {output_path}\n")
+            end_time = time.time()
+            total_time = end_time - start_time
+            print(f"Processing time: {total_time} seconds\n")
+
+
+    return timing_results
 
 def smote_new(input_folder, output_folder, epsilon, timing_results, class_column = None):
     for file_name in os.listdir(input_folder):
@@ -173,10 +313,10 @@ def smote_new(input_folder, output_folder, epsilon, timing_results, class_column
             smote_df = apply_new(data, protected_attribute, epsilon, class_column)
             end_time = time.time()
             elapsed_time = end_time - start_time
-            timing_results.append({"filename": f'{file_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
+            timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
             
             # Save the processed file with "_[epsilon]" added to the filename
-            output_path = os.path.join(output_folder, f"{file_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
+            output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
             smote_df.to_csv(output_path, index=False)
             print(f"Saved processed file: {output_path}\n")
             end_time = time.time()
@@ -184,6 +324,7 @@ def smote_new(input_folder, output_folder, epsilon, timing_results, class_column
             print(f"Processing time: {total_time} seconds\n")
 
     return timing_results
+
 
 def smote_new_replaced(input_folder, output_folder, epsilon, timing_results, class_column = None):
     for file_name in os.listdir(input_folder):
@@ -220,10 +361,10 @@ def smote_new_replaced(input_folder, output_folder, epsilon, timing_results, cla
             smote_df = apply_new_replaced(data, protected_attribute, epsilon, class_column)
             end_time = time.time()
             elapsed_time = end_time - start_time
-            timing_results.append({"filename": f'{file_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
+            timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
 
             # Save the processed file with "_[epsilon]" added to the filename
-            output_path = os.path.join(output_folder, f"{file_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
+            output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
             smote_df.to_csv(output_path, index=False)
             print(f"Saved processed file: {output_path}\n")
             end_time = time.time()
@@ -232,48 +373,3 @@ def smote_new_replaced(input_folder, output_folder, epsilon, timing_results, cla
 
 
     return timing_results
-
-
-
-# Define input and output directories
-input_folder = "fair_privated"
-#input_folder = "priv_privated"
-#output_folder = "priv_privated_fairsmoted_single_outs2"
-
-print(f"input folder: {input_folder}")
-
-
-# Ensure the output directory exists
-#os.makedirs(output_folder, exist_ok=True)
-
-#get datasets with binary features
-#datasets_with_binaries = process_datasets_in_folder(input_folder)
-
-#datasets_with_binaries = [dataset for dataset in datasets_with_binaries if '33.csv' not in dataset
-#                           and '13.csv' not in dataset]
-
-# File to store protected attributes
-#protected_attributes_file = os.path.join(output_folder, "protected_attributes.csv")
-
-# List to store filenames and protected attributes
-#protected_attributes_data = []
-
-#datasets = [f for f in os.listdir(input_folder) if os.path.isfile(os.path.join(input_folder, f))]
-#print(f"Datasets: {datasets}")
-
-
-# Process each CSV file in the input folder
-#for dataset in datasets_with_binaries:
-
-#smote_all(datasets, "method_1_a", "fair")
-#smote_singleouts(datasets, "method_1_b/fair", "fair")
-#smote_new(datasets, "private_newfair", "priv")
-#smote_new_replaced(datasets, "private_newfair_replaced", "fair")
-
-# Convert list to DataFrame and save it to CSV
-#df_protected_attributes = pd.DataFrame(protected_attributes_data)
-#df_protected_attributes.to_csv(protected_attributes_file, index=False)
-
-#print(f"\nProtected attributes saved to: {protected_attributes_file}")
-#print("Processing complete!")
-        

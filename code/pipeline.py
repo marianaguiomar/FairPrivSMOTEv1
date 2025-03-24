@@ -8,7 +8,7 @@ import sys
 from pipeline_helper import get_key_vars
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from code_fair.main.fair_in_private import smote_all, smote_singleouts, smote_new, smote_new_replaced
+from code_fair.main.fair_in_private import smote_v1, smote_v2
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 
 # default values for testing
@@ -34,6 +34,9 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
 
     #saving time to process
     timing_privatizing_results = []
+    timing_folder = os.path.join("test", "times", input_folder_name)
+    if not os.path.exists(timing_folder):
+        os.makedirs(timing_folder)
 
 
     # getting all files to process
@@ -44,17 +47,42 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
             continue
         key_vars = get_key_vars(file_name, key_vars_file)  # Fetch key_vars for the file
 
+        print(f"timing_folder = {timing_folder}")
+
     ######################## STEP 1: PRIVATIZE ORIGINAL DATASET ################################
         for epsilon in epsilons:
-            for knn in knns:
-                for per in pers:
-                    for qi in range(len(key_vars)):
+    #        for knn in knns:
+    #            for per in pers:
+    #                for qi in range(len(key_vars)):
+                        qi = 0
+                        knn = 1
+                        per = 1
                         input_file_name = os.path.splitext(os.path.basename(file_name))[0]
                         final_file_name = f'{output_folder}/{input_file_name}_{epsilon}-privateSMOTE_QI{qi}_knn{knn}_per{per}.csv'
                         # Check if the file already exists
                         if os.path.exists(final_file_name):
                             print(f"Skipping {final_file_name} (already exists)")
+                            fairing_file = None
+                            for fairing_name in ["timing_1a_privatizing.csv", "timing_1b_privatizing.csv"]:
+                                potential_path = os.path.join(timing_folder, fairing_name)
+                                if os.path.exists(potential_path):
+                                    fairing_file = potential_path
+                                    break  # Stop at the first found file
+
+                            if fairing_file:
+                                # Read the fairing file and find the matching row
+                                df_fairing = pd.read_csv(fairing_file)
+                                match = df_fairing[df_fairing["filename"] == os.path.basename(final_file_name)]
+                                
+                                if not match.empty:
+                                    # Append the found row to the timing_privatizing_results
+                                    timing_privatizing_results.append(match.iloc[0].to_dict())
+                                    print(f"Copied timing data for {final_file_name} from {fairing_file}")
+                                else:
+                                    print(f"No matching timing entry found in {fairing_file}")
+
                             continue  # Skip to the next iteration
+
 
                         print(f"transforming file {file_name} with epsilon={epsilon}, knn={knn}, per={per} and qi={qi}")
                         start_time = time.time()
@@ -81,9 +109,6 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
     timing_df = pd.DataFrame(timing_privatizing_results)
 
     #getting the timing folder
-    timing_folder = os.path.join("test", "times", input_folder_name)
-    if not os.path.exists(timing_folder):
-        os.makedirs(timing_folder)
     timing_csv_path = os.path.join(timing_folder, "timing_1a_privatizing.csv")
     timing_df.to_csv(timing_csv_path, index=False)
 
@@ -93,10 +118,11 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
-    smote_all(datasets_to_fair, final_output_folder, "class")
+    #smote_all(datasets_to_fair, final_output_folder, "class")
+    smote_v1("a", datasets_to_fair, final_output_folder, "class")
 
     ######################## UNITE TIMING METRICS ################################
-    
+    '''
     process_files_in_folder(timing_folder, dataset_folder)
     time_priv =  f"test/times/{input_folder_name}/timing_1a_privatizing.csv"
     time_fair =  f"test/times/{input_folder_name}/timing_1a_fairing.csv"
@@ -104,7 +130,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file):
     sum_times_fuzzy_match(output_combo,time_priv, time_fair)
 
     process_files_in_folder(timing_folder, dataset_folder)
-
+'''
     ######################## METRICS ########################
 
 
@@ -117,6 +143,9 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
 
     #saving time to process
     timing_privatizing_results = []
+    timing_folder = os.path.join("test", "times", input_folder_name)
+    if not os.path.exists(timing_folder):
+        os.makedirs(timing_folder)
 
 
     # getting all files to process
@@ -137,6 +166,27 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
                         # Check if the file already exists
                         if os.path.exists(final_file_name):
                             print(f"Skipping {final_file_name} (already exists)")
+
+                            # Look for "timing_1a_fairing.csv" or "timing_1b_fairing.csv"
+                            fairing_file = None
+                            for fairing_name in ["timing_1b_privatizing.csv", "timing_1a_privatizing.csv"]:
+                                potential_path = os.path.join(timing_folder, fairing_name)
+                                if os.path.exists(potential_path):
+                                    fairing_file = potential_path
+                                    break  # Stop at the first found file
+
+                            if fairing_file:
+                                # Read the fairing file and find the matching row
+                                df_fairing = pd.read_csv(fairing_file)
+                                match = df_fairing[df_fairing["filename"] == os.path.basename(final_file_name)]
+                                
+                                if not match.empty:
+                                    # Append the found row to the timing_privatizing_results
+                                    timing_privatizing_results.append(match.iloc[0].to_dict())
+                                    print(f"Copied timing data for {final_file_name} from {fairing_file}")
+                                else:
+                                    print(f"No matching timing entry found in {fairing_file}")
+                            
                             continue  # Skip to the next iteration
 
                         print(f"transforming file {file_name} with epsilon={epsilon}, knn={knn}, per={per} and qi={qi}")
@@ -164,9 +214,6 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
     timing_df = pd.DataFrame(timing_privatizing_results)
 
     #getting the timing folder
-    timing_folder = os.path.join("test", "times", input_folder_name)
-    if not os.path.exists(timing_folder):
-        os.makedirs(timing_folder)
     timing_csv_path = os.path.join(timing_folder, "timing_1b_privatizing.csv")
     timing_df.to_csv(timing_csv_path, index=False)
 
@@ -176,7 +223,8 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
-    smote_singleouts(datasets_to_fair, final_output_folder, "class")
+    #smote_singleouts(datasets_to_fair, final_output_folder, "class")
+    smote_v1("b", datasets_to_fair, final_output_folder, "class")
 
     ######################## UNITE TIMING METRICS ################################
     
@@ -203,7 +251,8 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file):
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
-        timing_results = smote_new(dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        #timing_results = smote_new(dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        timing_results = smote_v2("a", dataset_folder, final_output_folder, epsilon, timing_results, "class")
 
     ######################## TIMING ################################
 
@@ -219,7 +268,7 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file):
         timing_df.to_csv(timing_csv_path, index=False)
         print(f"Saved processed file: {timing_csv_path}\n")
 
-        #process_files_in_folder(timing_folder, dataset_folder)
+        process_files_in_folder(timing_folder, dataset_folder)
         #TODO
     ######################## METRICS ########################
 
@@ -236,7 +285,8 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file):
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
-        timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        timing_results = smote_v2("b", dataset_folder, final_output_folder, epsilon, timing_results, "class")
 
     ######################## TIMING ################################
 
@@ -252,14 +302,13 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file):
         timing_df.to_csv(timing_csv_path, index=False)
         print(f"Saved processed file: {timing_csv_path}\n")
 
-        #process_files_in_folder(timing_folder, dataset_folder)
+        process_files_in_folder(timing_folder, dataset_folder)
         #TODO
 
     ######################## METRICS ########################
 
 
-#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
+method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
 #method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
 #method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
-process_files_in_folder("test/times/test_input", "test/inputs/test_input")

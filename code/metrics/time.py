@@ -117,7 +117,7 @@ def process_time_data(file_path, original_folder):
                 match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE',filename)
                 dataset_name = match.group(1)        
 
-                dataset_file = f"{original_folder}/{dataset_name}.csv"
+                dataset_file = f"{original_folder}/{dataset_name}"
 
                 try:
                     # Count the rows in the original dataset
