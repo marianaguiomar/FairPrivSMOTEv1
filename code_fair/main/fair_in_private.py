@@ -144,12 +144,19 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     timing_folder = os.path.join("test", "times", input_folder_name)
 
+    fairing_file = f"{timing_folder}/timing_1a_fairing.csv"
+    if os.path.exists(fairing_file):  # Ensure the file exists
+        # Read all rows into a list of dictionaries
+        df_fairing = pd.read_csv(fairing_file)
+        timing_results.extend(df_fairing.to_dict(orient="records"))  # Store all rows
+
     print(f"input folder: {input_folder}")
     print(f"output folder: {output_folder}")
     for file_name in os.listdir(input_folder):
         file_path = os.path.join(input_folder, file_name)
         if not os.path.isfile(file_path):
             continue
+
 
         print(f"\nProcessing file: {file_path} > VERSION {version}")
         

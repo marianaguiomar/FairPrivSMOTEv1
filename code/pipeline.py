@@ -139,7 +139,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ######################## METRICS ########################
 
 
-def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
+def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -169,6 +169,8 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
                         knn = 1
                         per = 1
                         qi = 0
+                        binary_columns, binary_percentages = binary_columns_percentage(dataset_path, class_column)
+
                         input_file_name = os.path.splitext(os.path.basename(file_name))[0]
                         final_file_name = f'{output_folder}/{input_file_name}_{epsilon}-privateSMOTE_QI{qi}_knn{knn}_per{per}.csv'
                         # Check if the file already exists
@@ -209,7 +211,9 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
                                             '--k', '5',                   # Group size for k-anonymity (you can adjust if needed)
                                             '--key_vars', *key_vars[qi],       # List of quasi-identifiers (QI)
                                             '--output_folder', output_folder,
-                                            '--nqi', str(qi)
+                                            '--nqi', str(qi), 
+                                            '--binary_columns', *map(str, binary_columns),  # Convert indices to strings before passing them
+                                            '--binary_percentages', json.dumps(binary_percentages)  # Keep as JSON
                                         ])
                         
                         end_time = time.time()
@@ -232,7 +236,7 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file):
         os.makedirs(final_output_folder)
 
     #smote_singleouts(datasets_to_fair, final_output_folder, "class")
-    smote_v1("b", datasets_to_fair, final_output_folder, "class")
+    smote_v1("b", datasets_to_fair, final_output_folder, class_column)
 
     ######################## UNITE TIMING METRICS ################################
     
@@ -316,7 +320,7 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file):
     ######################## METRICS ########################
 
 
-#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "class")
-#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
+method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "class")
+#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "class")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
-method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
+#method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
