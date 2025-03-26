@@ -194,28 +194,15 @@ def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_c
 
 
 # Function to compute all metrics
-def compute_fairness_metrics(dataset_name, protected_attribute):
-    #load dataset
-    print(dataset_name)
-    dt = pd.read_csv(dataset_name)
+def compute_fairness_metrics(file_path, protected_attribute):
+    dt = pd.read_csv(file_path)
 
-    # Drop the column if it exists
-    if "single_out" in dt.columns:
-        dt.drop(columns=["single_out"], inplace=True)
-        print("Dropped column 'single_out'")
+    class_column = dt.columns[-1]  # Use last column
+    print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
 
-    print(f"Processing {dataset_name} with protected attribute: {protected_attribute}")
-
-    # Identify the target column dynamically
-    if dt.columns[-1] == "highest_risk" or dt.columns[-1] == "single_out":
-        target_column = dt.columns[-2]  # Use second-to-last column
-    else:
-        target_column = dt.columns[-1]  # Use last column
-
-    print(f"target_column: {target_column}")
     # Separate features and target
-    X = dt.drop(columns=[target_column])  # Features (all columns except the target)
-    y = dt[target_column]  # Target column
+    X = dt.drop(columns=[class_column])  # Features (all columns except the target)
+    y = dt[class_column]  # Target column
 
 
     clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100)  # LSR
@@ -233,11 +220,8 @@ def compute_fairness_metrics(dataset_name, protected_attribute):
     # Compute ROC-AUC score
     roc_auc = roc_auc_score(y_test, y_pred_proba)
 
-    print("PRINTING UNIQUE")
-    np.unique(y_pred, return_counts=True)
-    print("")
     return {
-        "File": dataset_name,
+        "File": file_path,
         "Recall": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall'),
         "FAR": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far'),
         "Precision": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision'),

@@ -16,7 +16,7 @@ from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 knn_values = [1, 3, 5]
 per_values = [1, 2, 3]
-default_input_folder = "test/inputs/test_input"
+default_input_folder = "test/inputs/test_input_10"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
@@ -43,7 +43,6 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     # getting all files to process
     for file_name in os.listdir(dataset_folder):
         dataset_path = os.path.join(dataset_folder, file_name)  # Full path to the dataset file
-        
         if not os.path.isfile(dataset_path):  # Skip if not a file (e.g., a directory)
             continue
         key_vars = get_key_vars(file_name, key_vars_file)  # Fetch key_vars for the file
@@ -137,6 +136,15 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     process_files_in_folder(timing_folder, dataset_folder)
     
     ######################## METRICS ########################
+
+    ### calcular fairness, guardar em ficheiros
+    ### calcular a media de todos
+    ### guardar plot
+    
+
+    ### calcular linkability, guardar em ficheiros
+    ### calcular a media de todos
+    ### guardar plot
 
 
 def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
@@ -245,13 +253,14 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     time_fair =  f"test/times/{input_folder_name}/timing_1b_fairing.csv"
     output_combo = f"test/times/{input_folder_name}/timing_1b_total.csv"
     if not os.path.exists(output_combo):
-        sum_times_fuzzy_match(output_combo,time_priv, time_fair)
-        process_files_in_folder(timing_folder, dataset_folder)
+        if os.path.exists(time_fair):
+            sum_times_fuzzy_match(output_combo,time_priv, time_fair)
+            process_files_in_folder(timing_folder, dataset_folder)
 
     ######################## METRICS ########################
 
 
-def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file):
+def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -264,7 +273,7 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file):
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
         #timing_results = smote_new(dataset_folder, final_output_folder, epsilon, timing_results, "class")
-        timing_results = smote_v2("a", dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        timing_results = smote_v2("a", dataset_folder, final_output_folder, epsilon, timing_results, class_column)
 
     ######################## TIMING ################################
 
@@ -285,7 +294,7 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file):
     ######################## METRICS ########################
 
 
-def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file):
+def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -298,7 +307,7 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file):
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
         #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
-        timing_results = smote_v2("b", dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        timing_results = smote_v2("b", dataset_folder, final_output_folder, epsilon, timing_results, class_column)
 
     ######################## TIMING ################################
 
@@ -320,7 +329,9 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file):
     ######################## METRICS ########################
 
 
-method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "class")
-#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "class")
-#method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
-#method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv")
+method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
+method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
+method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
+method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
+
+

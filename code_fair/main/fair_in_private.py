@@ -144,12 +144,6 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     timing_folder = os.path.join("test", "times", input_folder_name)
 
-    fairing_file = f"{timing_folder}/timing_1a_fairing.csv"
-    if os.path.exists(fairing_file):  # Ensure the file exists
-        # Read all rows into a list of dictionaries
-        df_fairing = pd.read_csv(fairing_file)
-        timing_results.extend(df_fairing.to_dict(orient="records"))  # Store all rows
-
     print(f"input folder: {input_folder}")
     print(f"output folder: {output_folder}")
     for file_name in os.listdir(input_folder):
@@ -157,9 +151,11 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
         if not os.path.isfile(file_path):
             continue
 
-
         print(f"\nProcessing file: {file_path} > VERSION {version}")
-        
+        if "10_" in file_name:
+            print(f"file 10 found! in {file_name}")
+            class_column = "c"
+
         # Load the dataset
         data = pd.read_csv(file_path)
 
@@ -179,9 +175,8 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
             # Check if the file already exists
             if os.path.exists(output_path):
                 print(f"Skipping {output_path} (already exists)")
-                fairing_file = f"{timing_folder}/timing_1a_fairing.csv"
-                
-                if fairing_file:
+                fairing_file = f"{timing_folder}/timing_1{version}_fairing.csv"
+                if os.path.exists(fairing_file):
                     # Read the fairing file and find the matching row
                     df_fairing = pd.read_csv(fairing_file)
                     match = df_fairing[df_fairing["filename"] == os.path.basename(output_path)]
@@ -199,8 +194,14 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
             if protected_attribute not in data.columns:
                 raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
 
-            if not check_protected_attribute(data, class_column, protected_attribute):
-                continue  # Skip to next protected attribute if the checks fail
+            if version == "a":
+                print(f"class_column: {class_column}")
+                if not check_protected_attribute(data, class_column, protected_attribute):
+                    continue  # Skip to next protected attribute if the checks fail
+            
+            elif version == "b":
+                if not check_protected_attribute(data, class_column, protected_attribute, singleouts=True):
+                    continue  # Skip to next protected attribute if the checks fail
 
             # If all checks pass, process the file further
             print(f"File '{file_name}' is valid. Proceeding with processing...")
@@ -237,6 +238,10 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
 def smote_v2(version, input_folder, output_folder, epsilon, timing_results, class_column = None):
     for file_name in os.listdir(input_folder):
         file_path = os.path.join(input_folder, file_name)
+        #TODO -> FIX
+        if "10_" in file_name:
+            print("file 10 found!")
+            class_column = "c"
         if not os.path.isfile(file_path):
             continue
 
