@@ -6,7 +6,7 @@ import pandas as pd
 import sys
 import json
 
-from pipeline_helper import get_key_vars, binary_columns_percentage
+from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from code_fair.main.fair_in_private import smote_v1, smote_v2
@@ -16,7 +16,7 @@ from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 knn_values = [1, 3, 5]
 per_values = [1, 2, 3]
-default_input_folder = "test/inputs/test_input_10"
+default_input_folder = "test/inputs/priv"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
@@ -26,7 +26,7 @@ parser.add_argument('--knn', type=int, nargs='*', default=knn_values, help="Numb
 parser.add_argument('--per', type=int, nargs='*', default=per_values, help="Percentage of new cases to replace the original")
 args = parser.parse_args()
 
-def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
+def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -46,7 +46,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
         if not os.path.isfile(dataset_path):  # Skip if not a file (e.g., a directory)
             continue
         key_vars = get_key_vars(file_name, key_vars_file)  # Fetch key_vars for the file
-
+        class_column = get_class_column(file_name, class_col_file)
         print(f"timing_folder = {timing_folder}")
 
     ######################## STEP 1: PRIVATIZE ORIGINAL DATASET ################################
@@ -123,7 +123,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
         os.makedirs(final_output_folder)
 
     #smote_all(datasets_to_fair, final_output_folder, "class")
-    smote_v1("a", datasets_to_fair, final_output_folder, class_column)
+    smote_v1("a", datasets_to_fair, final_output_folder, class_col_file)
 
     ######################## UNITE TIMING METRICS ################################
     
@@ -140,14 +140,14 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ### calcular fairness, guardar em ficheiros
     ### calcular a media de todos
     ### guardar plot
-    
+
 
     ### calcular linkability, guardar em ficheiros
     ### calcular a media de todos
     ### guardar plot
 
 
-def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
+def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -168,7 +168,8 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
         if not os.path.isfile(dataset_path):  # Skip if not a file (e.g., a directory)
             continue
         key_vars = get_key_vars(file_name, key_vars_file)  # Fetch key_vars for the file
-
+        class_column = get_class_column(file_name, class_col_file)
+        
     ######################## STEP 1: PRIVATIZE ORIGINAL DATASET ################################
         for epsilon in epsilons:
     #        for knn in knns:
@@ -244,7 +245,7 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
         os.makedirs(final_output_folder)
 
     #smote_singleouts(datasets_to_fair, final_output_folder, "class")
-    smote_v1("b", datasets_to_fair, final_output_folder, class_column)
+    smote_v1("b", datasets_to_fair, final_output_folder, class_col_file)
 
     ######################## UNITE TIMING METRICS ################################
     
@@ -260,7 +261,7 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ######################## METRICS ########################
 
 
-def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
+def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -273,7 +274,7 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
         #timing_results = smote_new(dataset_folder, final_output_folder, epsilon, timing_results, "class")
-        timing_results = smote_v2("a", dataset_folder, final_output_folder, epsilon, timing_results, class_column)
+        timing_results = smote_v2("a", dataset_folder, final_output_folder, epsilon, timing_results, class_col_file)
 
     ######################## TIMING ################################
 
@@ -294,7 +295,7 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ######################## METRICS ########################
 
 
-def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column):
+def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
     #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
@@ -307,7 +308,7 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
         #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
-        timing_results = smote_v2("b", dataset_folder, final_output_folder, epsilon, timing_results, class_column)
+        timing_results = smote_v2("b", dataset_folder, final_output_folder, epsilon, timing_results, class_col_file)
 
     ######################## TIMING ################################
 
@@ -329,9 +330,8 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_column
     ######################## METRICS ########################
 
 
-method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
-method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
-method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
-method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "c")
-
-
+method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#print(get_class_column("kdd.csv", "test/class_attribute.csv"))

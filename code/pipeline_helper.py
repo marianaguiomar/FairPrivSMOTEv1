@@ -79,8 +79,52 @@ def process_protected_attributes(file_name, protected_attributes_file_path):
 
     return protected_attr_dict[file_name]
 
+def get_class_column(file_name, class_column_file):
+    '''
+    Loads the class column from a CSV file and returns the corresponding class column 
+    for the specific file name.
+
+    The CSV file (`class_column_file`) is expected to contain two columns:
+    - The first column contains the file names (without extensions).
+    - The second column contains the corresponding class column (single attribute).
+
+    Args:
+        file_name (str): The name of the dataset file for which the class column needs to be retrieved.
+        class_column_file (str): The path to the CSV file that contains the class columns.
+
+    Returns:
+        str: The class column for the given file name.
+
+    Raises:
+        ValueError: If the format of the class column field is invalid or if no class column 
+                    is found for the given file.
+        NOTE: there should be no spaces between commas in the .csv. otherwise, a ValueError will be raised
+    '''
+
+    class_column_dict = {}
+
+    with open(class_column_file, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header if present
+        for row in reader:
+            file_id = row[0].strip()
+            class_column_value = row[1].strip()
+
+            # Ensure the class_column_value is a single string, not a list or other format
+            if class_column_value and not class_column_value.startswith("["):
+                class_column_dict[file_id] = class_column_value
+            else:
+                raise ValueError(f"Invalid class_column format for file {file_id}: {class_column_value}")
+
+    file_key = os.path.splitext(file_name)[0]  # Remove .csv extension from file name
+
+    if file_key not in class_column_dict:
+        raise ValueError(f"Error: No class_column found for file {file_name} (searched as {file_key})")
+
+    return class_column_dict[file_key]
 
 def check_protected_attribute(data, class_column, protected_attribute, singleouts=False):
+    print(f"class col: {class_column}, protected_attribute: {protected_attribute}")
     # Check if the column contains only 1s and 0s and has at least one of each
     if not set(data[protected_attribute].dropna()) <= {0, 1}:
         print(f"Protected attribute '{protected_attribute}' column does not contain only 1s and 0s.")

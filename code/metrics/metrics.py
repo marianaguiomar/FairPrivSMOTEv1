@@ -198,6 +198,7 @@ def linkability_csv(linkability_file_list):
     average_linkability_df.to_csv(output_file, index=False)
     print(f"Average linkability metrics saved to {output_file}")
 
+
 def process_single_folder_fairness(input_folder):
     """Process a single folder and call fairness_csv."""
     if not os.path.exists(input_folder) or not os.path.isdir(input_folder):
@@ -273,10 +274,26 @@ def process_folders_linkability(folders, output_file):
     print(f"Results saved to {output_file}")
 
 
+folder_list = ["test/metrics/linkability_results/outputs_1_a/fair",
+               "test/metrics/linkability_results/outputs_1_a/priv",
+               "test/metrics/linkability_results/outputs_1_b/fair",
+               "test/metrics/linkability_results/outputs_1_b/priv",
+               "test/metrics/linkability_results/outputs_2_a/fair",
+               "test/metrics/linkability_results/outputs_2_a/priv",
+               "test/metrics/linkability_results/outputs_2_b/fair",
+               "test/metrics/linkability_results/outputs_2_b/priv"]
+
+process_folders_linkability(folder_list, "test/metrics/linkability_results/linkability_summary.csv")
+
 #TODO -> corrigir isto
 #fairness_csv("test/outputs_1_a/test_input_10")
-process_single_folder_fairness("test/outputs_1_a/test_input")
-process_single_folder_fairness("test/outputs_1_b/test_input")
-process_single_folder_fairness("test/outputs_2_a/test_input")
-process_single_folder_fairness("test/outputs_2_b/test_input")
+#process_single_folder_fairness("test/outputs_1_a/priv")
+#process_single_folder_fairness("test/outputs_1_b/priv")
+#process_single_folder_fairness("test/outputs_2_a/priv")
+#process_single_folder_fairness("test/outputs_2_b/priv")
+
+#process_single_folder_fairness("test/outputs_1_a/fair")
+#process_single_folder_fairness("test/outputs_1_b/fair")
+#process_single_folder_fairness("test/outputs_2_a/fair")
+#process_single_folder_fairness("test/outputs_2_b/fair")
 

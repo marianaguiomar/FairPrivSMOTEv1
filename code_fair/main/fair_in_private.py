@@ -8,7 +8,7 @@ import time
 
 # Add the 'code' folder (parent of 'code_fair') to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'code')))
-from pipeline_helper import process_protected_attributes, check_protected_attribute
+from pipeline_helper import process_protected_attributes, check_protected_attribute, get_class_column
 
 def smote_singleouts(input_folder, output_folder, class_column = None):
     timing_results = []
@@ -139,7 +139,7 @@ def smote_all(input_folder, output_folder, class_column=None):
         print(f"Saved processed file: {timing_csv_path}\n")
 
 
-def smote_v1(version, input_folder, output_folder, class_column=None):
+def smote_v1(version, input_folder, output_folder, class_col_file):
     timing_results = []
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     timing_folder = os.path.join("test", "times", input_folder_name)
@@ -167,8 +167,7 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
 
         protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
         
-        if class_column == None:
-            class_column = data.columns[-1]
+        class_column = get_class_column(dataset_name, class_col_file)
 
         for protected_attribute in protected_attributes:
             output_path = os.path.join(output_folder, f"{file_name}_{protected_attribute}.csv")
@@ -235,7 +234,7 @@ def smote_v1(version, input_folder, output_folder, class_column=None):
         print(f"Saved processed file: {timing_csv_path}\n")
 
 
-def smote_v2(version, input_folder, output_folder, epsilon, timing_results, class_column = None):
+def smote_v2(version, input_folder, output_folder, epsilon, timing_results, class_col_file):
     for file_name in os.listdir(input_folder):
         file_path = os.path.join(input_folder, file_name)
         #TODO -> FIX
@@ -255,8 +254,7 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
 
         protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
 
-        if class_column == None:
-            class_column = data.columns[-1]
+        class_column = get_class_column(dataset_name, class_col_file)
 
         for protected_attribute in protected_attributes:
 
