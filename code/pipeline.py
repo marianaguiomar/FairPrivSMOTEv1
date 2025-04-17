@@ -9,7 +9,7 @@ import json
 from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from code_fair.main.fair_in_private import smote_v1, smote_v2
+from code_fair.main.fair_in_private import smote_v1, smote_v2, smote_v3
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 
 # default values for testing
@@ -328,10 +328,44 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
         #TODO
 
     ######################## METRICS ########################
+        
+def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
+    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
+    # creating output folder
+    input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
+    final_output_folder = f"test/outputs_3/{input_folder_name}"
+    if not os.path.exists(final_output_folder):
+        os.makedirs(final_output_folder)
+
+    timing_results = []
+
+    ######################## APPLY FAIR-PRIV SMOTE ################################
+    for epsilon in epsilons:
+        #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
+        timing_results = smote_v3(dataset_folder, final_output_folder, epsilon, timing_results, class_col_file)
+
+    ######################## TIMING ################################
+
+    # Save timing results to CSV
+    if timing_results:
+        timing_df = pd.DataFrame(timing_results)
+        timing_df = timing_df.sort_values(by=timing_df.columns[0], ascending=True)
+        input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
+        timing_folder = os.path.join("test", "times", input_folder_name)
+        if not os.path.exists(timing_folder):
+            os.makedirs(timing_folder)
+        timing_csv_path = os.path.join(timing_folder, "timing_3.csv")
+        timing_df.to_csv(timing_csv_path, index=False)
+        print(f"Saved processed file: {timing_csv_path}\n")
+
+        process_files_in_folder(timing_folder, dataset_folder)
+        #TODO
+
+    ######################## METRICS ########################
 
 
-method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 #print(get_class_column("kdd.csv", "test/class_attribute.csv"))

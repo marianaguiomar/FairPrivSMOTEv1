@@ -9,7 +9,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import roc_auc_score
 
 
-def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, metric='aod'):
+def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class_column, metric='aod',):
     
     clf.fit(x_train, y_train)
     y_pred = clf.predict(x_test)
@@ -20,17 +20,7 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, metri
     test_df_copy = copy.deepcopy(test_df)
     test_df_copy['current_pred_' + biased_col] = y_pred
 
-    # Dynamically determine the target column
-    if 'class' in test_df_copy.columns:
-        target_col = 'class'  # If 'class' exists, set target_col as 'class'
-    elif 'c' in test_df_copy.columns:
-        target_col = 'c'  # If 'c' exists, set target_col as 'c'
-    elif 'Probability' in test_df_copy.columns:
-        target_col = 'Probability'
-    else:
-        # Optionally handle the case where neither 'class' nor 'c' exists
-        print("Neither 'class' nor 'c' column found in the dataframe.")
-        target_col = None  # or raise an error if you want to stop execution
+    target_col = class_column
 
     #print(f"target_col: {target_col}")
 
@@ -188,16 +178,15 @@ def consistency_score(X, y, n_neighbors=5):
     consistency = sum(abs(y[i] - np.mean(y[indices[i]])) for i in range(num_samples)) / num_samples
     return 1.0 - consistency
 
-def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_col, metric):
+def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_col, metric, class_column):
     df = copy.deepcopy(test_df)
-    return get_counts(clf, X_train, y_train, X_test, y_test, df, biased_col, metric=metric)
+    return get_counts(clf, X_train, y_train, X_test, y_test, df, biased_col, class_column, metric=metric)
 
 
 # Function to compute all metrics
-def compute_fairness_metrics(file_path, protected_attribute):
+def compute_fairness_metrics(file_path, protected_attribute, class_column):
     dt = pd.read_csv(file_path)
 
-    class_column = dt.columns[-1]  # Use last column
     print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
 
     # Separate features and target
@@ -222,15 +211,15 @@ def compute_fairness_metrics(file_path, protected_attribute):
 
     return {
         "File": file_path,
-        "Recall": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall'),
-        "FAR": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far'),
-        "Precision": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision'),
-        "Accuracy": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy'),
-        "F1 Score": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1'),
+        "Recall": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column),
+        "FAR": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far', class_column),
+        "Precision": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision', class_column),
+        "Accuracy": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy', class_column),
+        "F1 Score": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1', class_column),
         "ROC AUC": roc_auc,
-        f"AOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod'),
-        f"EOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod'),
-        "SPD": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'SPD'),
-        "DI": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'DI'),
+        f"AOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod', class_column),
+        f"EOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod', class_column),
+        "SPD": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'SPD', class_column),
+        "DI": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'DI', class_column),
     }
 

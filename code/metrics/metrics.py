@@ -9,9 +9,10 @@ import re
 import csv
 import numpy as np
 import sys 
+import itertools
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes
+from pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column
 
 def calculate_average_std_risk_and_ci(folder_name, file_paths):
     """
@@ -116,9 +117,9 @@ def calculate_average_std_fairness(input_folder):
 
             match_protected_attribute = re.search(r"_(\w+)\.csv$", file_name)  # Extracts protected attribute before ".csv"
             protected_attribute = match_protected_attribute.group(1)
-
+            class_column = get_class_column(dataset_name, "test/class_attribute.csv")
             # Compute fairness metrics for the current file
-            fairness_metrics = compute_fairness_metrics(file_path, protected_attribute)
+            fairness_metrics = compute_fairness_metrics(file_path, protected_attribute, class_column)
             file_metrics = {"File": file_name}
             # Add the metrics to the total sums, ignoring NaN values
             for metric, value in fairness_metrics.items():
@@ -273,27 +274,23 @@ def process_folders_linkability(folders, output_file):
 
     print(f"Results saved to {output_file}")
 
+'''
+def generate_folders(base_path, output_sets, categories):
+    return [f"{base_path}/{output}/{category}" for output, category in itertools.product(output_sets, categories)]
 
-folder_list = ["test/metrics/linkability_results/outputs_1_a/fair",
-               "test/metrics/linkability_results/outputs_1_a/priv",
-               "test/metrics/linkability_results/outputs_1_b/fair",
-               "test/metrics/linkability_results/outputs_1_b/priv",
-               "test/metrics/linkability_results/outputs_2_a/fair",
-               "test/metrics/linkability_results/outputs_2_a/priv",
-               "test/metrics/linkability_results/outputs_2_b/fair",
-               "test/metrics/linkability_results/outputs_2_b/priv"]
-
+folder_list = generate_folders(
+    base_path="test/metrics/linkability_results",
+    output_sets=["outputs_1_a", "outputs_1_b", "outputs_2_a", "outputs_2_b"],
+    categories=["fair","priv"]
+)
 process_folders_linkability(folder_list, "test/metrics/linkability_results/linkability_summary.csv")
+'''
+#TODO -> corrigir istos
 
-#TODO -> corrigir isto
-#fairness_csv("test/outputs_1_a/test_input_10")
-#process_single_folder_fairness("test/outputs_1_a/priv")
-#process_single_folder_fairness("test/outputs_1_b/priv")
-#process_single_folder_fairness("test/outputs_2_a/priv")
-#process_single_folder_fairness("test/outputs_2_b/priv")
+process_single_folder_fairness("test/outputs_1_a/priv")
+process_single_folder_fairness("test/outputs_1_b/priv")
+process_single_folder_fairness("test/outputs_2_a/priv")
+process_single_folder_fairness("test/outputs_2_b/priv")
 
-#process_single_folder_fairness("test/outputs_1_a/fair")
-#process_single_folder_fairness("test/outputs_1_b/fair")
-#process_single_folder_fairness("test/outputs_2_a/fair")
-#process_single_folder_fairness("test/outputs_2_b/fair")
+
 

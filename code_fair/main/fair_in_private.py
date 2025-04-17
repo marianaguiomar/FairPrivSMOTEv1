@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import sys
-from .generate_samples_private import apply_fairsmote, apply_fairsmote_singleouts, apply_new, apply_new_replaced
+from .generate_samples_private import apply_fairsmote, apply_fairsmote_singleouts, apply_new, apply_new_replaced, apply_fully_replaced
 #from sensitive import label_imbalance, process_datasets_in_folder
 import re
 import time
@@ -287,6 +287,52 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
 
 
     return timing_results
+
+def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_file):
+    for file_name in os.listdir(input_folder):
+        file_path = os.path.join(input_folder, file_name)
+
+        print(f"\nProcessing file: {file_path} with epsilon {epsilon} > VERSION 3")
+
+        # Load the dataset
+        data = pd.read_csv(file_path)
+
+        dataset_name_match = re.match(r'^(.*?).csv', file_name)
+        dataset_name = dataset_name_match.group(1)
+
+        protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
+
+        class_column = get_class_column(dataset_name, class_col_file)
+
+        for protected_attribute in protected_attributes:
+
+            # Check if the protected attribute column exists
+            if protected_attribute not in data.columns:
+                raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
+
+            if not check_protected_attribute(data, class_column, protected_attribute):
+                continue
+
+            # If all checks pass, process the file further
+            print(f"File '{file_name}' is valid. Proceeding with processing...")
+                
+            start_time = time.time()
+            smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column)
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
+
+            # Save the processed file with "_[epsilon]" added to the filename
+            output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
+            smote_df.to_csv(output_path, index=False)
+            print(f"Saved processed file: {output_path}\n")
+            end_time = time.time()
+            total_time = end_time - start_time
+            print(f"Processing time: {total_time} seconds\n")
+
+
+    return timing_results
+
 
 def smote_new(input_folder, output_folder, epsilon, timing_results, class_column = None):
     for file_name in os.listdir(input_folder):

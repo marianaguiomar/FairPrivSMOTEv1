@@ -73,6 +73,15 @@ class PrivateSMOTE:
         kgrp = self.samples.groupby(self.key_vars)[
             self.key_vars[0]].transform(len)
         self.samples['highest_risk'] = np.where(kgrp < self.k, 1, 0)
+        '''
+        # Count how many highest_risk == 1 in each (class, protected) group
+        singleouts = self.samples[self.samples['highest_risk'] == 1]
+        counts = singleouts.groupby(["Class", "V25"]).size().to_dict()
+
+        print("Single-out (highest_risk == 1) counts by group:")
+        for key in sorted(counts):
+            print(f"  - {key}: {counts[key]} single-outs")
+            '''
         return self.samples
 
     def nearest_neighbours(self, df):

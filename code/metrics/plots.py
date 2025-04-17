@@ -108,7 +108,7 @@ def plot_time_across_files(folder_path, feature):
 # Example usage
     
 folder_path_fairness = "test/metrics/fairness_results"  # Replace with your actual folder path
-features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'ROC AUC', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
+features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 
 for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)

@@ -426,11 +426,19 @@ def process_13():
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
 
+    ## Drop categorical features
+    dataset_orig = dataset_orig.drop([
+        'case_number', 'day', 'presence_of_edema', 'V11', 'V13', 'V15', 'V16'
+    ], axis=1, errors='ignore')  # Ignore if columns are missing
+
 
     ## Change symbolics to numerics
     dataset_orig['sex'] = np.where(dataset_orig['sex'] == "male", 1, 0)
     dataset_orig['binaryClass'] = np.where(dataset_orig['binaryClass'] == "P", 1, 0)
+    dataset_orig['presence_of_asictes'] = np.where(dataset_orig['presence_of_asictes'] == "yes", 1, 0)
+    dataset_orig['presence_of_hepatomegaly'] = np.where(dataset_orig['presence_of_hepatomegaly'] == "yes", 1, 0)
 
+    dataset_orig['drug'] = np.where(dataset_orig['drug'] == "D-penicillamine", 1, 0)
 
 
 
@@ -527,3 +535,4 @@ def process_56():
     print(f"Processed file saved: {output_path}")
 
 
+process_13()

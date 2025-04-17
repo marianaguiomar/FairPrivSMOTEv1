@@ -255,6 +255,69 @@ def generate_samples_new_replaced(no_of_samples, df, epsilon):
 
     return final_df
 
+def generate_samples_fully_replaced(no_of_samples, df, epsilon):
+
+    total_data = df.values.tolist()
+    knn = NN(n_neighbors=5, algorithm='auto').fit(df.values)
+
+    # Compute min, max, and std values for each column
+    min_values = [np.min(df.iloc[:, i]) if not df.iloc[:, i].dtype == 'object' else np.nan for i in range(df.shape[1])]
+    max_values = [np.max(df.iloc[:, i]) if not df.iloc[:, i].dtype == 'object' else np.nan for i in range(df.shape[1])]
+    std_values = [np.std(df.iloc[:, i]) if not df.iloc[:, i].dtype == 'object' else np.nan for i in range(df.shape[1])]
+
+    new_candidates = []
+
+    for _ in range(no_of_samples):
+        cr = 0.8  # Crossover rate
+        f = 0.8   # Scaling factor
+
+        parent_candidate, child_candidate_1, child_candidate_2, _ = get_ngbr_idx(df, knn)
+
+        new_candidate = []
+        for key, value in parent_candidate.items():
+            col_index = df.columns.get_loc(key)
+
+            if isinstance(parent_candidate[key], bool):
+                new_candidate.append(parent_candidate[key] if cr < random.random() else not parent_candidate[key])
+            elif isinstance(parent_candidate[key], str):
+                new_candidate.append(random.choice([
+                    parent_candidate[key],
+                    child_candidate_1[key],
+                    child_candidate_2[key]
+                ]))
+            elif isinstance(parent_candidate[key], list):
+                temp_lst = []
+                for i in range(len(parent_candidate[key])):
+                    temp_lst.append(
+                        parent_candidate[key][i] if cr < random.random()
+                        else int(parent_candidate[key][i] + f * (child_candidate_1[key][i] - child_candidate_2[key][i]))
+                    )
+                new_candidate.append(temp_lst)
+            else:
+                noise = np.multiply(
+                    child_candidate_1[key] - child_candidate_2[key],
+                    np.random.laplace(0, 1 / epsilon)
+                )
+
+                flip = np.multiply(
+                    np.random.choice([-1, 1], size=1),
+                    std_values[col_index]
+                ) if not np.isnan(std_values[col_index]) else 0
+
+                new_value = abs(parent_candidate[key] + f * noise + flip)
+
+                if min_values[col_index] <= new_value <= max_values[col_index]:
+                    new_candidate.append(new_value)
+                else:
+                    new_candidate.append(parent_candidate[key])
+
+        new_candidates.append(new_candidate)
+
+    final_df = pd.DataFrame(new_candidates)
+    final_df.columns = df.columns
+
+    return final_df
+
 def apply_fairsmote(dataset, protected_attribute, class_column):
     # Count occurrences for each category (class label, protected attribute)
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
@@ -586,6 +649,102 @@ def apply_new_replaced(dataset, protected_attribute, epsilon, class_column):
     cleaned_final_df = final_df.applymap(unpack_value)
     cleaned_final_df = final_df.applymap(standardize_binary)
     
+    return cleaned_final_df
+
+def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, key_vars, k):
+    # --- Step 1: Flag 'single_out' rows using k-anonymity ---
+    kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
+    dataset['single_out'] = np.where(kgrp < k, 1, 0)
+
+    # --- Step 2: Count class + protected attribute combinations ---
+    category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
+    majority_class = max(category_counts, key=category_counts.get)
+    maximum_count = category_counts[majority_class]
+    print(f"Category counts: {category_counts}")
+
+    # --- Step 3: Get minority classes and how many samples to add ---
+    minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
+    samples_to_increase = {
+        class_tuple: maximum_count - count for class_tuple, count in minority_classes.items()
+    }
+
+    # --- Step 4: Split majority and minority class data ---
+    df_majority = dataset[
+        (dataset[class_column] == majority_class[0]) & 
+        (dataset[protected_attribute] == majority_class[1])
+    ]
+    df_minority = {
+        class_tuple: dataset[
+            (dataset[class_column] == class_tuple[0]) & 
+            (dataset[protected_attribute] == class_tuple[1])
+        ] for class_tuple in minority_classes
+    }
+
+    # Convert categorical columns to string if necessary
+    for col in [protected_attribute, class_column]:
+        if dataset[col].dtype == 'O':  # Object type means it's categorical
+            df_majority[col] = df_majority[col].astype(str)
+            for class_tuple in df_minority:
+                df_minority[class_tuple][col] = df_minority[class_tuple][col].astype(str)
+
+    # --- Step 5: Replace single-outs in majority class ---
+    if 'single_out' in df_majority.columns:
+        df_majority_single_out = df_majority[df_majority['single_out'] == 1]
+        df_majority_remaining = df_majority[df_majority['single_out'] != 1]
+        print(f"Number of single-outs in majority class: {len(df_majority_single_out)}")
+        if not df_majority_single_out.empty:
+            replaced_majority = generate_samples_fully_replaced(
+                len(df_majority_single_out), df_majority_single_out.select_dtypes(include=[np.number]), epsilon
+            )
+            df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
+
+    # --- Step 6: Handle minority classes ---
+    generated_data = []
+    cleaned_minority_data = []
+
+    for class_tuple, df_subset in df_minority.items():
+        num_samples = samples_to_increase[class_tuple]
+        df_single_out = df_subset[df_subset['single_out'] == 1]
+        df_non_single_out = df_subset[df_subset['single_out'] != 1]
+
+        # --- Step 6a: Replace single-outs if any ---
+        if not df_single_out.empty:
+            replaced = generate_samples_fully_replaced(
+                len(df_single_out), df_single_out.select_dtypes(include=[np.number]), epsilon
+            )
+            cleaned_minority_data.append(df_non_single_out)
+            generated_data.append(replaced)
+        else:
+            # If no single-outs, retain full original data
+            cleaned_minority_data.append(df_subset)
+
+        # --- Step 6b: Augment from full minority subset (before replacement) ---
+        base_for_augment = df_subset.select_dtypes(include=[np.number])
+        if not base_for_augment.empty and len(base_for_augment) >= 3 and num_samples > 0:
+            augmented = generate_samples_fully_replaced(num_samples, base_for_augment, epsilon)
+            generated_data.append(augmented)
+
+    # --- Step 7: Final dataset assembly ---
+    final_df = pd.concat(
+        [df_majority] + cleaned_minority_data + generated_data,
+        ignore_index=True
+    )
+
+    # --- Step 8: Drop 'single_out' and clean final data ---
+    if 'single_out' in final_df.columns:
+        final_df = final_df.drop(columns=['single_out'])
+
+    print("\nFinal subclass sizes:")
+    for class_tuple in df_minority:
+        final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
+                                (final_df[protected_attribute] == class_tuple[1])])
+        print(f"  - {class_tuple}: {final_count}")
+
+    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
+
+    cleaned_final_df = final_df.applymap(unpack_value)
+    cleaned_final_df = cleaned_final_df.applymap(standardize_binary)
+
     return cleaned_final_df
 
 '''
