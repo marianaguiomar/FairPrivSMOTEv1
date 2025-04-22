@@ -16,7 +16,7 @@ from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 knn_values = [1, 3, 5]
 per_values = [1, 2, 3]
-default_input_folder = "test/inputs/priv"
+default_input_folder = "test/inputs/priv30"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
@@ -368,4 +368,7 @@ def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file
 #method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 #method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#print(get_class_column("kdd.csv", "test/class_attribute.csv"))
+#method_3(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+
+#method_3("test/inputs/fair_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+method_3("test/inputs/priv_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")

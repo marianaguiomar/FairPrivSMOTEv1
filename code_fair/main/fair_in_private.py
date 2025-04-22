@@ -8,7 +8,7 @@ import time
 
 # Add the 'code' folder (parent of 'code_fair') to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'code')))
-from pipeline_helper import process_protected_attributes, check_protected_attribute, get_class_column
+from pipeline_helper import process_protected_attributes, check_protected_attribute, get_class_column, get_key_vars, binary_columns_percentage
 
 def smote_singleouts(input_folder, output_folder, class_column = None):
     timing_results = []
@@ -301,8 +301,10 @@ def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_fil
         dataset_name = dataset_name_match.group(1)
 
         protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
-
         class_column = get_class_column(dataset_name, class_col_file)
+        key_vars = get_key_vars(file_name, "test/key_vars.csv")
+        binary_columns, binary_percentages = binary_columns_percentage(file_path, class_column)
+
 
         for protected_attribute in protected_attributes:
 
@@ -316,19 +318,20 @@ def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_fil
             # If all checks pass, process the file further
             print(f"File '{file_name}' is valid. Proceeding with processing...")
                 
-            start_time = time.time()
-            smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column)
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv', "time taken (s)": elapsed_time})
+            for i in range(len(key_vars)):
+                start_time = time.time()
+                smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column, key_vars[i], binary_columns, binary_columns_percentage, 5, 0.5)
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}_QI{i}.csv', "time taken (s)": elapsed_time})
 
-            # Save the processed file with "_[epsilon]" added to the filename
-            output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}.csv")
-            smote_df.to_csv(output_path, index=False)
-            print(f"Saved processed file: {output_path}\n")
-            end_time = time.time()
-            total_time = end_time - start_time
-            print(f"Processing time: {total_time} seconds\n")
+                # Save the processed file with "_[epsilon]" added to the filename
+                output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}_QI{i}.csv")
+                smote_df.to_csv(output_path, index=False)
+                print(f"Saved processed file: {output_path}\n")
+                end_time = time.time()
+                total_time = end_time - start_time
+                print(f"Processing time: {total_time} seconds\n")
 
 
     return timing_results

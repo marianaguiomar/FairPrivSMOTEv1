@@ -103,7 +103,7 @@ def generate_samples_new(no_of_samples, df, epsilon):
         for key, value in parent_candidate.items():
             # Find the column index from the column name
             col_index = df.columns.get_loc(key)
-            
+
             # Check the type of the column value and generate a new candidate accordingly
             if isinstance(parent_candidate[key], bool):
                 # Boolean values, flip based on crossover rate
@@ -255,8 +255,7 @@ def generate_samples_new_replaced(no_of_samples, df, epsilon):
 
     return final_df
 
-def generate_samples_fully_replaced(no_of_samples, df, epsilon):
-
+def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, binary_columns_percentage, replace=False, protected_column=None, class_column=None):    
     total_data = df.values.tolist()
     knn = NN(n_neighbors=5, algorithm='auto').fit(df.values)
 
@@ -272,20 +271,36 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon):
         f = 0.8   # Scaling factor
 
         parent_candidate, child_candidate_1, child_candidate_2, _ = get_ngbr_idx(df, knn)
+        #print(f"Parent candidate: {parent_candidate}, Child candidates: {child_candidate_1}, {child_candidate_2}")
 
         new_candidate = []
         for key, value in parent_candidate.items():
             col_index = df.columns.get_loc(key)
 
+            # Preserve original value if 'replace' is True and this is a protected or class column
+            if replace and key in [protected_column, class_column]:
+                new_candidate.append(value)
+                continue
+
+            if binary_columns and key in binary_columns:
+                # --- Custom rule for binary columns ---
+                rand_val = np.random.rand()
+                threshold = binary_columns_percentage.get(key, 0.5)  # Use 0.5 as fallback if key not present
+                new_candidate.append(1 if rand_val <= threshold else 0)
+            
+
             if isinstance(parent_candidate[key], bool):
+                #print("its bool")
                 new_candidate.append(parent_candidate[key] if cr < random.random() else not parent_candidate[key])
             elif isinstance(parent_candidate[key], str):
+                #print("its str")
                 new_candidate.append(random.choice([
                     parent_candidate[key],
                     child_candidate_1[key],
                     child_candidate_2[key]
                 ]))
             elif isinstance(parent_candidate[key], list):
+                #print("its list")
                 temp_lst = []
                 for i in range(len(parent_candidate[key])):
                     temp_lst.append(
@@ -294,6 +309,7 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon):
                     )
                 new_candidate.append(temp_lst)
             else:
+                #print("its numeric")
                 noise = np.multiply(
                     child_candidate_1[key] - child_candidate_2[key],
                     np.random.laplace(0, 1 / epsilon)
@@ -310,12 +326,14 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon):
                     new_candidate.append(new_value)
                 else:
                     new_candidate.append(parent_candidate[key])
+        #print(f"New candidate: {new_candidate}")
+        #print("\n")
 
         new_candidates.append(new_candidate)
 
     final_df = pd.DataFrame(new_candidates)
     final_df.columns = df.columns
-
+    #print("\n")
     return final_df
 
 def apply_fairsmote(dataset, protected_attribute, class_column):
@@ -651,7 +669,7 @@ def apply_new_replaced(dataset, protected_attribute, epsilon, class_column):
     
     return cleaned_final_df
 
-def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, key_vars, k):
+def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, key_vars, binary_columns, binary_columns_percentage, k, augmentation_rate):
     # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
@@ -692,12 +710,12 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
         print(f"Number of single-outs in majority class: {len(df_majority_single_out)}")
-        if not df_majority_single_out.empty:
+        if len(df_majority_single_out) >= 3:
             replaced_majority = generate_samples_fully_replaced(
-                len(df_majority_single_out), df_majority_single_out.select_dtypes(include=[np.number]), epsilon
+                len(df_majority_single_out), df_majority_single_out.select_dtypes(include=[np.number]), epsilon, binary_columns, binary_columns_percentage, replace=True, protected_column=protected_attribute, class_column=class_column
             )
             df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
-
+    
     # --- Step 6: Handle minority classes ---
     generated_data = []
     cleaned_minority_data = []
@@ -706,23 +724,31 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
         num_samples = samples_to_increase[class_tuple]
         df_single_out = df_subset[df_subset['single_out'] == 1]
         df_non_single_out = df_subset[df_subset['single_out'] != 1]
+        print(f"Number of single-outs in {class_tuple}: {len(df_single_out)}")
 
         # --- Step 6a: Replace single-outs if any ---
-        if not df_single_out.empty:
+        if len(df_single_out)>=3:
+            print("replaced!")
             replaced = generate_samples_fully_replaced(
-                len(df_single_out), df_single_out.select_dtypes(include=[np.number]), epsilon
+                len(df_single_out), df_single_out.select_dtypes(include=[np.number]), epsilon, binary_columns, binary_columns_percentage, replace=True, protected_column=protected_attribute, class_column=class_column
             )
             cleaned_minority_data.append(df_non_single_out)
             generated_data.append(replaced)
         else:
             # If no single-outs, retain full original data
+            print("not replaced!")
             cleaned_minority_data.append(df_subset)
 
         # --- Step 6b: Augment from full minority subset (before replacement) ---
         base_for_augment = df_subset.select_dtypes(include=[np.number])
-        if not base_for_augment.empty and len(base_for_augment) >= 3 and num_samples > 0:
-            augmented = generate_samples_fully_replaced(num_samples, base_for_augment, epsilon)
+        print(f"Base for augmentation: {len(base_for_augment)} rows")
+        n_samples = int(len(df_subset) * augmentation_rate)
+        if not base_for_augment.empty and len(base_for_augment) >= 3 and n_samples > 0:
+            print(f"Generating {n_samples} samples for {class_tuple}")
+            augmented = generate_samples_fully_replaced(n_samples, base_for_augment, epsilon, binary_columns, binary_columns_percentage)
             generated_data.append(augmented)
+        print("\n")
+    
 
     # --- Step 7: Final dataset assembly ---
     final_df = pd.concat(
@@ -739,7 +765,6 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
         final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
                                 (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
-
     print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
 
     cleaned_final_df = final_df.applymap(unpack_value)

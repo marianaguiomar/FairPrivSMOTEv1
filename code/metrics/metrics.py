@@ -115,7 +115,8 @@ def calculate_average_std_fairness(input_folder):
             match_dataset_name = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file_name)
             dataset_name = match_dataset_name.group(1)
 
-            match_protected_attribute = re.search(r"_(\w+)\.csv$", file_name)  # Extracts protected attribute before ".csv"
+            #match_protected_attribute = re.search(r"_(\w+)\.csv$", file_name)  # Extracts protected attribute before ".csv"
+            match_protected_attribute = re.search(r'_(\w+)_QI', file_name)  # Extracts protected attribute before ".csv"
             protected_attribute = match_protected_attribute.group(1)
             class_column = get_class_column(dataset_name, "test/class_attribute.csv")
             # Compute fairness metrics for the current file
@@ -287,10 +288,10 @@ process_folders_linkability(folder_list, "test/metrics/linkability_results/linka
 '''
 #TODO -> corrigir istos
 
-process_single_folder_fairness("test/outputs_1_a/priv")
-process_single_folder_fairness("test/outputs_1_b/priv")
-process_single_folder_fairness("test/outputs_2_a/priv")
-process_single_folder_fairness("test/outputs_2_b/priv")
+process_single_folder_fairness("test/outputs_3/fair50_qis")
+#process_single_folder_fairness("test/outputs_3/priv")
+#process_single_folder_fairness("test/outputs_3/priv")
+#process_single_folder_fairness("test/outputs_3/priv")
 
 
 
