@@ -87,12 +87,9 @@ node_modules/
 datasets/
 results_metrics/
 
-combined_test/averages
-combined_test/datasets
-combined_test/fairness_results
-combined_test/linkability_results
-combined_test/other
-combined_test/times
+class_attribute.csv
+key_vars.csv
+protected_attributes.csv
 
 
 priv39/
