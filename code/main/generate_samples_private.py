@@ -11,8 +11,7 @@ from sklearn.neighbors import NearestNeighbors as NN
 import itertools
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'cleanup')))
-from clean import unpack_value, standardize_binary
-#from sensitive import label_imbalance
+from helpers.clean import unpack_value, standardize_binary
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -27,17 +26,6 @@ def get_ngbr(df, knn):
             candidate_2 = df.iloc[ngbr[0][1]]
             candidate_3 = df.iloc[ngbr[0][2]]
             return parent_candidate,candidate_2,candidate_3
-
-def get_ngbr_idx(df, knn):
-    rand_sample_idx = random.randint(0, df.shape[0] - 1)  # Get a random index
-    parent_candidate = df.iloc[rand_sample_idx]  # Select the parent row
-    ngbr = knn.kneighbors(parent_candidate.values.reshape(1, -1), 3, return_distance=False)
-    
-    candidate_1 = df.iloc[ngbr[0][0]]
-    candidate_2 = df.iloc[ngbr[0][1]]
-    candidate_3 = df.iloc[ngbr[0][2]]
-    
-    return parent_candidate, candidate_2, candidate_3, rand_sample_idx  # Return index too
 
 
 def generate_samples(no_of_samples,df):
@@ -76,8 +64,6 @@ def generate_samples(no_of_samples,df):
     final_df = pd.DataFrame(total_data)
     final_df.columns = df.columns
     return final_df
-
-
 
 def generate_samples_new(no_of_samples, df, epsilon):
     total_data = df.values.tolist()
@@ -165,7 +151,7 @@ def generate_samples_new_replaced(no_of_samples, df, epsilon):
         f = 0.8   # Scaling factor
 
        # Get parent and child candidates (neighbors)
-        parent_candidate, child_candidate_1, child_candidate_2, parent_idx = get_ngbr_idx(df, knn)
+        parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, knn)
 
         #print(f"len of total_data BEFORE popping parent_candidate = {len(total_data)}")
         row_list = parent_candidate.tolist()
@@ -270,7 +256,7 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, 
         cr = 0.8  # Crossover rate
         f = 0.8   # Scaling factor
 
-        parent_candidate, child_candidate_1, child_candidate_2, _ = get_ngbr_idx(df, knn)
+        parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, knn)
         #print(f"Parent candidate: {parent_candidate}, Child candidates: {child_candidate_1}, {child_candidate_2}")
 
         new_candidate = []
@@ -664,13 +650,13 @@ def apply_new_replaced(dataset, protected_attribute, epsilon, class_column):
     
     return cleaned_final_df
 
-def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, key_vars, binary_columns, binary_columns_percentage, k, augmentation_rate):
+def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, key_vars, binary_columns, binary_columns_percentage, k, augmentation_rate, majority = False):
     # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
     # Print number of single-outs
     num_single_outs = (dataset['single_out'] == 1).sum()
-    print(f"Key_vars: {key_vars}, Number of single-outs: {num_single_outs}")
+    #print(f"Key_vars: {key_vars}, Number of single-outs: {num_single_outs}")
 
     # --- Step 2: Count class + protected attribute combinations ---
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
@@ -742,8 +728,10 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
         # --- Step 6b: Augment from full minority subset (before replacement) ---
         base_for_augment = df_subset.select_dtypes(include=[np.number])
         print(f"Base for augmentation: {len(base_for_augment)} rows")
-        n_samples = int(len(df_subset) * augmentation_rate)
-        num_samples = int(samples_to_increase[class_tuple] * augmentation_rate)
+        if majority: 
+            num_samples = int(samples_to_increase[class_tuple] * augmentation_rate)
+        else:
+            num_samples = int(len(df_subset) * augmentation_rate)
         if not base_for_augment.empty and len(base_for_augment) >= 3 and num_samples > 0:
             print(f"Generating {num_samples} samples for {class_tuple}")
             augmented = generate_samples_fully_replaced(num_samples, base_for_augment, epsilon, binary_columns, binary_columns_percentage)

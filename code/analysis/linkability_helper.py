@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import re
-from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes
+from main.pipeline_helper import get_key_vars, get_class_column, process_protected_attributes
 import warnings
 
 def get_ds_and_qi(file, og):
@@ -47,12 +47,12 @@ def process_folder(folder_path):
 
     for priv_file in files:
         ds, nqi = get_ds_and_qi(priv_file, og=False)
-        original_file = f"test/inputs/{dir2}/{ds}.csv"
+        original_file = f"datasets/inputs/{dir2}/{ds}.csv"
 
         before_df = pd.read_csv(original_file)
         after_df = pd.read_csv(os.path.join(folder_path, priv_file))
 
-        key_vars = get_key_vars(ds, "test/key_vars.csv")
+        key_vars = get_key_vars(ds, "key_vars.csv")
         survived = surviving_singleouts(before_df, after_df, key_vars[nqi])
         total_singleouts = len(get_singleouts(before_df, key_vars[nqi]))
 
@@ -136,22 +136,15 @@ def process_folder_singleouts(folder_path, k=5):
         # Infer dataset name and number of QIs
         ds_match = re.match(r'^(.*?).csv', file)
         ds = ds_match.group(1) if ds_match else None
-        key_vars = get_key_vars(ds, "test/key_vars.csv")
+        key_vars = get_key_vars(ds, "key_vars.csv")
 
-        class_column = get_class_column(ds, "test/class_attribute.csv")  
-        protected_column = process_protected_attributes(ds, "test/protected_attributes.csv") 
+        class_column = get_class_column(ds, "class_attribute.csv")  
+        protected_column = process_protected_attributes(ds, "protected_attributes.csv") 
 
         for i in range(len(key_vars)): 
             for j in range(len(protected_column)):
                 print(f"\nProcessing {file} with key_vars: {key_vars[i]} and protected_column: {protected_column[j]}")
                 print_singleouts_info(file_path, class_column, protected_column[j], key_vars[i], k)
 
-
-# Example usage
-#process_folder("test/outputs_1_a/priv")
-#process_folder("test/outputs_1_b/priv")
-#process_folder("test/outputs_2_a/priv")
-#process_folder("test/outputs_2_b/priv")
-#process_folder("test/outputs_3/others")
                 
-process_folder_singleouts("test/inputs/fair30")
+process_folder_singleouts("datasets/inputs/fair30")

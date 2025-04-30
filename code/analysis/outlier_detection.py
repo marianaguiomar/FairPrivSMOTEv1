@@ -160,12 +160,12 @@ def summarize_linkability(input_folder, output_folder):
 
 
 detect_outliers_in_folder(folder_path="test/inputs/priv",
-    key_vars_csv="test/key_vars.csv",
-    output_csv="test/outlier_study/outliers_priv.csv"
+    key_vars_csv="key_vars.csv",
+    output_csv="results_metrics/others/outlier_study/outliers_priv.csv"
 )
 '''
 
 summarize_linkability(
-    input_folder="test/metrics/linkability_results/outputs_3/priv30",
-    output_folder="test/outlier_study/linkability_summaries"
+    input_folder="results_metrics/linkability_results/outputs_3/priv30",
+    output_folder="results_metrics/others/outlier_study/linkability_summaries"
 )'''

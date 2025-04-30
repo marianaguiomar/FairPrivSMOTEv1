@@ -229,4 +229,4 @@ for dataset in datasets_with_binaries:
     
     
 
-#print(process_datasets_in_folder("original_datasets/priv"))
+print(process_datasets_in_folder("original_datasets/priv"))

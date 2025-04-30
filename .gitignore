@@ -84,11 +84,8 @@ node_modules/
 # Logs
 *.log
 
-fair_datasets/
-priv_datasets/
-linkability_results/
-test/
-original_datasets/
+datasets/
+results_metrics/
 
 combined_test/averages
 combined_test/datasets

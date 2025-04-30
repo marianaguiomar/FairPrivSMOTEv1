@@ -10,9 +10,43 @@ import csv
 import numpy as np
 import sys 
 import itertools
+import subprocess
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column
+from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column
+
+def run_linkability(folder_path, dir, og = False):
+
+    file_list = [file for _, _, files in os.walk(folder_path) for file in files]  
+    total_files = len(file_list) 
+            
+    # Loop through each file and each value of nqi (0, 1, 2, 3,4)
+    for idx, file in enumerate(file_list, start=1):
+        print(f"\n\nProcessing file {idx}/{total_files}: {file}")
+        if og:
+            ds_match = re.match(r'^(.*?).csv', file)
+        else:
+            ds_match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file)
+        nqi_match = re.search(r"QI(\d+)", file)  # Find number after "QI"
+
+        ds = ds_match.group(1) if ds_match else None
+        nqi = int(nqi_match.group(1)) if nqi_match else 0
+
+        key_vars = get_key_vars(ds, "key_vars.csv")
+        orig_file = f"datasets/inputs/{dir}/{ds}.csv"
+
+        transf_file = os.path.join(folder_path, file)
+
+        print(f"orig file: {orig_file}")
+        print(f"transf file: {transf_file}")
+        subprocess.run([
+        'python', 'code/metrics/linkability.py',  # Path to the linkability.py script
+        '--orig_file', orig_file,        # Path to the original file
+        '--transf_file', transf_file,           # Path to the transformed file
+        '--control_file', orig_file,
+        '--key_vars', *key_vars[nqi],   # Pass the sublist of key_vars corresponding to ds and nqi
+        '--nqi_number', str(nqi)
+        ])
 
 def calculate_average_std_risk_and_ci(folder_name, file_paths):
     """
@@ -118,7 +152,7 @@ def calculate_average_std_fairness(input_folder):
             #match_protected_attribute = re.search(r"_(\w+)\.csv$", file_name)  # Extracts protected attribute before ".csv"
             match_protected_attribute = re.search(r'_(\w+)_QI', file_name)  # Extracts protected attribute before ".csv"
             protected_attribute = match_protected_attribute.group(1)
-            class_column = get_class_column(dataset_name, "test/class_attribute.csv")
+            class_column = get_class_column(dataset_name, "class_attribute.csv")
 
             print(f"\nProcessing file: {file_path} with protected attribute {protected_attribute} and class {class_column}")  # Debug: Print file being processed
             # Compute fairness metrics for the current file
@@ -143,7 +177,7 @@ def calculate_average_std_fairness(input_folder):
 
     # Save to Excel (use Pandas to write to an Excel file)
     parts = input_folder.split("/")  
-    file_output_path = f"test/metrics/fairness_results/{parts[1]}"
+    file_output_path = f"results_metrics/fairness_results/{parts[1]}"
     os.makedirs(file_output_path, exist_ok=True)
     results_df = pd.DataFrame(all_fairness_metrics)
     results_df_sorted = results_df.sort_values(by="File")
@@ -182,7 +216,7 @@ def fairness_csv(input_folder):
         print("Error: Invalid input folder format")
         return
     
-    output_folder = f"test/metrics/averages/{datasets_folder}"
+    output_folder = f"results_metrics/averages/{datasets_folder}"
     os.makedirs(output_folder, exist_ok=True)
     
     output_file = f"{output_folder}/average_fairness_{method}.csv"  # Specify your output file name
@@ -225,7 +259,7 @@ def process_single_folder_fairness(input_folder):
         new_data = pd.DataFrame([metrics])  # Single-row DataFrame
 
         # Define output file path
-        output_file = f"test/metrics/averages/{method}.csv"
+        output_file = f"results_metrics/averages/{method}.csv"
         
         # Ensure directory exists
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -282,21 +316,22 @@ def generate_folders(base_path, output_sets, categories):
     return [f"{base_path}/{output}/{category}" for output, category in itertools.product(output_sets, categories)]
 
 folder_list = generate_folders(
-    base_path="test/metrics/linkability_results",
+    base_path="results_metrics/linkability_results",
     #output_sets=["outputs_1_a", "outputs_1_b", "outputs_2_a", "outputs_2_b"],
     output_sets=["outputs_3"],
     categories=["fair_bigger","priv_bigger"]
 )
-process_folders_linkability(folder_list, "test/metrics/linkability_results/linkability_v3_summary.csv")
+#process_folders_linkability(folder_list, "results_metrics/linkability_results/linkability_v3_summary.csv")
 
 #TODO -> corrigir istos
+run_linkability("datasets/outputs/outputs_3/others", "priv")
 
-#process_single_folder_fairness("test/outputs_3/fair30v2")
-#process_single_folder_fairness("test/outputs_3/priv50_qis")
-#process_single_folder_fairness("test/outputs_3/fair50")
-#process_single_folder_fairness("test/outputs_3/priv50")
-#process_single_folder_fairness("test/outputs_3/fair_bigger")
-#process_single_folder_fairness("test/outputs_3/priv_bigger")
+#process_single_folder_fairness("datasets/outputs/outputs_3/fair30v2")
+#process_single_folder_fairness("datasets/outputs/outputs_3/priv50_qis")
+#process_single_folder_fairness("datasets/outputs/outputs_3/fair50")
+#process_single_folder_fairness("datasets/outputs/outputs_3/priv50")
+#process_single_folder_fairness("datasets/outputs/outputs_3/fair_bigger")
+#process_single_folder_fairness("datasets/outputs/outputs_3/priv_bigger")
 
 
 

@@ -27,12 +27,14 @@ control_data = pd.read_csv(f'{args.control_file}')
 #print(transf_data.columns)
 #print(control_data.columns)
 
+
 evaluator = LinkabilityEvaluator(ori=data,
                             syn=transf_data,
                             #control=control_data,
                             n_attacks=len(control_data),
-                            aux_cols=args.key_vars, #
+                            aux_cols=args.key_vars, 
                             n_neighbors=10)
+
 
 print("initiating attack")
 start_time = time.time()
@@ -46,7 +48,7 @@ print(elapsed_time)
 
 ### ------ add on meu para ser mais dinâmico ------
 # Extract directory from the file path
-output_path = f'combined_test/linkability_results/{args.transf_file}_QI{args.nqi_number}.csv'
+output_path = f'results_metrics/linkability_results/{args.transf_file}_QI{args.nqi_number}.csv'
 output_dir = os.path.dirname(output_path)
 
 # Create the directory if it doesn't exist

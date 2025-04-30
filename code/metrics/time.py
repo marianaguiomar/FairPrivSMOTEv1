@@ -168,7 +168,7 @@ def process_files_in_folder(folder_path, original_folder):
             print("-" * 40)
             '''
 
-def process_csv_folder(folder_path, output_file="combined_test/times/summary.csv"):
+def process_csv_folder(folder_path, output_file="combined_times/summary.csv"):
     summary_data = []
     # Iterate through all CSV files in the folder
     for file_name in os.listdir(folder_path):
@@ -207,7 +207,7 @@ def process_csv_folder(folder_path, output_file="combined_test/times/summary.csv
     #summary_df.to_csv(output_file, index=False)
 
 # Example usage:
-#folder_path = 'combined_test/times/to_sum'  # Replace with your actual folder path
+#folder_path = 'combined_times/to_sum'  # Replace with your actual folder path
 #csv_files = [f for f in os.listdir(folder_path) if f.endswith(".csv")]
 #process_files_in_folder(folder_path)
 #process_csv_folder(folder_path)
@@ -228,7 +228,7 @@ for file in csv_files:
     process_time_data(file_path, data_type)
     '''
 '''
-folder_path = "combined_test/times/to_sum"
+folder_path = "combined_times/to_sum"
 file_pairs = [
     ("timing_fair_privated.csv", "timing_1_a_fair.csv", "timing_total_1_a_fair.csv"),
     #("timing_priv_privated.csv", "timing_1_a_priv.csv", "timing_total_1_a_priv.csv"),

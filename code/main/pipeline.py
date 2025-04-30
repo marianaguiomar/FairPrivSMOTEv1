@@ -5,18 +5,19 @@ import time
 import pandas as pd
 import sys
 import json
+import re
 
-from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column, print_class_combinations
+from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column, process_protected_attributes, print_class_combinations, check_protected_attribute
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from code_fair.main.fair_in_private import smote_v1, smote_v2, smote_v3
+from main.fair_in_private import smote_v1, smote_v2, smote_v3
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 
-# default values for testing
+# ------------ DEFAULT VALUES ------------
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 knn_values = [1, 3, 5]
 per_values = [1, 2, 3]
-default_input_folder = "test/inputs/priv_bigger"
+default_input_folder = "datasets/inputs/fair"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
@@ -27,7 +28,6 @@ parser.add_argument('--per', type=int, nargs='*', default=per_values, help="Perc
 args = parser.parse_args()
 
 def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
-    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
     output_folder = os.path.join("test", "inputs_privatized", input_folder_name)
@@ -51,12 +51,12 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
 
     ######################## STEP 1: PRIVATIZE ORIGINAL DATASET ################################
         for epsilon in epsilons:
-    #        for knn in knns:
-    #            for per in pers:
-    #                for qi in range(len(key_vars)):
-                        qi = 0
-                        knn = 1
-                        per = 1
+            for knn in knns:
+                for per in pers:
+                    for qi in range(len(key_vars)):
+                        #qi = 0
+                        #knn = 1
+                        #per = 1
                         binary_columns, binary_percentages = binary_columns_percentage(dataset_path, class_column)
                         
                         input_file_name = os.path.splitext(os.path.basename(file_name))[0]
@@ -118,7 +118,7 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
 
     ######################## STEP 2: FAIR THE PRIVATIZED DATASET ################################
     datasets_to_fair = f"{output_folder}"
-    final_output_folder = f"test/outputs_1_a/{input_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_1_a/{input_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -128,27 +128,15 @@ def method_1_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
     ######################## UNITE TIMING METRICS ################################
     
     process_files_in_folder(timing_folder, dataset_folder)
-    time_priv =  f"test/times/{input_folder_name}/timing_1a_privatizing.csv"
-    time_fair =  f"test/times/{input_folder_name}/timing_1a_fairing.csv"
-    output_combo = f"test/times/{input_folder_name}/timing_1a_total.csv"
+    time_priv =  f"results_metrics/others/times/{input_folder_name}/timing_1a_privatizing.csv"
+    time_fair =  f"results_metrics/others/times/{input_folder_name}/timing_1a_fairing.csv"
+    output_combo = f"results_metrics/others/times/{input_folder_name}/timing_1a_total.csv"
     sum_times_fuzzy_match(output_combo,time_priv, time_fair)
 
     process_files_in_folder(timing_folder, dataset_folder)
     
-    ######################## METRICS ########################
-
-    ### calcular fairness, guardar em ficheiros
-    ### calcular a media de todos
-    ### guardar plot
-
-
-    ### calcular linkability, guardar em ficheiros
-    ### calcular a media de todos
-    ### guardar plot
-
 
 def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
-    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
     output_folder = os.path.join("test", "inputs_privatized", input_folder_name)
@@ -172,12 +160,12 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
         
     ######################## STEP 1: PRIVATIZE ORIGINAL DATASET ################################
         for epsilon in epsilons:
-    #        for knn in knns:
-    #            for per in pers:
-    #                for qi in range(len(key_vars)):
-                        knn = 1
-                        per = 1
-                        qi = 0
+#            for knn in knns:
+#                for per in pers:
+#                    for qi in range(len(key_vars)):
+                        #knn = 1
+                        #per = 1
+                        #qi = 0
                         binary_columns, binary_percentages = binary_columns_percentage(dataset_path, class_column)
 
                         input_file_name = os.path.splitext(os.path.basename(file_name))[0]
@@ -240,7 +228,7 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
 
     ######################## STEP 2: FAIR THE PRIVATIZED DATASET ################################
     datasets_to_fair = f"{output_folder}"
-    final_output_folder = f"test/outputs_1_b/{input_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_1_b/{input_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -250,22 +238,20 @@ def method_1_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
     ######################## UNITE TIMING METRICS ################################
     
     process_files_in_folder(timing_folder, dataset_folder)
-    time_priv =  f"test/times/{input_folder_name}/timing_1b_privatizing.csv"
-    time_fair =  f"test/times/{input_folder_name}/timing_1b_fairing.csv"
-    output_combo = f"test/times/{input_folder_name}/timing_1b_total.csv"
+    time_priv =  f"results_metrics/others/times/{input_folder_name}/timing_1b_privatizing.csv"
+    time_fair =  f"results_metrics/others/times/{input_folder_name}/timing_1b_fairing.csv"
+    output_combo = f"results_metrics/others/times/{input_folder_name}/timing_1b_total.csv"
     if not os.path.exists(output_combo):
         if os.path.exists(time_fair):
             sum_times_fuzzy_match(output_combo,time_priv, time_fair)
             process_files_in_folder(timing_folder, dataset_folder)
 
-    ######################## METRICS ########################
 
 
 def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
-    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
-    final_output_folder = f"test/outputs_2_a/{input_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_2_a/{input_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -273,7 +259,6 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
-        #timing_results = smote_new(dataset_folder, final_output_folder, epsilon, timing_results, "class")
         timing_results = smote_v2("a", dataset_folder, final_output_folder, epsilon, timing_results, class_col_file)
 
     ######################## TIMING ################################
@@ -291,15 +276,13 @@ def method_2_a(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
         print(f"Saved processed file: {timing_csv_path}\n")
 
         process_files_in_folder(timing_folder, dataset_folder)
-        #TODO
-    ######################## METRICS ########################
+
 
 
 def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
-    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
-    final_output_folder = f"test/outputs_2_b/{input_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_2_b/{input_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -307,7 +290,6 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
-        #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
         timing_results = smote_v2("b", dataset_folder, final_output_folder, epsilon, timing_results, class_col_file)
 
     ######################## TIMING ################################
@@ -325,15 +307,14 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
         print(f"Saved processed file: {timing_csv_path}\n")
 
         process_files_in_folder(timing_folder, dataset_folder)
-        #TODO
 
-    ######################## METRICS ########################
         
-def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file):
-    #TODO !!!!!!!!! deixar introduzir key vars e protected_attributes como argument e classe column tambem
+def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, majority, final_folder_name=None):
     # creating output folder
-    input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
-    final_output_folder = f"test/outputs_3/{input_folder_name}"
+    input_folder_name = os.path.basename(os.path.normpath(input_folder))
+    if final_folder_name is None:
+        final_folder_name = input_folder_name
+    final_output_folder = f"datasets/outputs/outputs_3/{final_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -341,8 +322,33 @@ def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
-        #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
-        timing_results = smote_v3(dataset_folder, final_output_folder, epsilon, timing_results, class_col_file, 0.3)
+        for file_name in os.listdir(input_folder):
+            file_path = os.path.join(input_folder, file_name)
+            data = pd.read_csv(file_path)
+
+            dataset_name_match = re.match(r'^(.*?).csv', file_name)
+            dataset_name = dataset_name_match.group(1)
+
+            protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
+            class_column = get_class_column(dataset_name, class_col_file)
+            key_vars = get_key_vars(file_name, "key_vars.csv")
+            binary_columns, binary_percentages = binary_columns_percentage(file_path, class_column)
+
+            for protected_attribute in protected_attribute_list:
+                if protected_attribute not in data.columns:
+                    raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
+                if not check_protected_attribute(data, class_column, protected_attribute):
+                    print(f"File '{file_name}' is NOT valid. Skipping")
+                    continue
+
+                for ix, qi in enumerate(key_vars):
+                    start_time = time.time()
+                    smote_v3(data, dataset_name, final_output_folder, epsilon, class_column, protected_attribute, qi, ix, binary_columns, binary_percentages, 0.3, majority)
+                    end_time = time.time()
+                    elapsed_time = end_time - start_time
+                    print(f"Processing time: {elapsed_time} seconds\n")
+                    timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}_QI{ix}.csv', "time taken (s)": elapsed_time})
+
 
     ######################## TIMING ################################
 
@@ -350,7 +356,7 @@ def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file
     if timing_results:
         timing_df = pd.DataFrame(timing_results)
         timing_df = timing_df.sort_values(by=timing_df.columns[0], ascending=True)
-        input_folder_name = os.path.basename(os.path.normpath(dataset_folder))
+        input_folder_name = os.path.basename(os.path.normpath(input_folder))
         timing_folder = os.path.join("test", "times", input_folder_name)
         if not os.path.exists(timing_folder):
             os.makedirs(timing_folder)
@@ -358,27 +364,12 @@ def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file
         timing_df.to_csv(timing_csv_path, index=False)
         print(f"Saved processed file: {timing_csv_path}\n")
 
-        process_files_in_folder(timing_folder, dataset_folder)
-        #TODO
-
-    ######################## METRICS ########################
+        process_files_in_folder(timing_folder, input_folder)
 
 
-#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#method_3(args.input_folder, [0.1], args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-method_3(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 
-#method_3("test/inputs/fair_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#method_3("test/inputs/priv_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-
-#print_class_combinations("test/inputs/others/adult.csv", "race", "Probability")
-#print_class_combinations("test/outputs_3/others/adult_0.1-privateSMOTE_race_QI0.csv", "race", "Probability")
-
-#print_class_combinations("test/inputs/others/credit.csv", "SEX", "default_payment_next_month")
-#print_class_combinations("test/outputs_3/others/credit_0.1-privateSMOTE_SEX_QI0.csv", "SEX", "default_payment_next_month")
-        
-#print_class_combinations("test/inputs/fair/law.csv", "male", "pass_bar")
-#print_class_combinations("test/inputs/fair/student.csv", "sex", "Probability")
+#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
+#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
+#method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
+#method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
+method_3("datasets/inputs/others", args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv", majority=True, final_folder_name=None)

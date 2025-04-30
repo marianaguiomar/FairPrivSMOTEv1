@@ -63,8 +63,8 @@ def compare_approaches(df, metric):
     return {"test": test_name, "p-value": p, "posthoc": posthoc_result}
 
 file_paths = [
-    "test/metrics/linkability_results/outputs_1_a/fair/0-merged.csv", "test/metrics/linkability_results/outputs_1_b/fair/0-merged.csv", 
-    "test/metrics/linkability_results/outputs_2_a/fair/0-merged.csv", "test/metrics/linkability_results/outputs_2_b/fair/0-merged.csv"
+    "results_metrics/linkability_results/outputs_1_a/fair/0-merged.csv", "results_metrics/linkability_results/outputs_1_b/fair/0-merged.csv", 
+    "results_metrics/linkability_results/outputs_2_a/fair/0-merged.csv", "results_metrics/linkability_results/outputs_2_b/fair/0-merged.csv"
 ]
 
 # Step 5: Load and process the data
@@ -82,8 +82,8 @@ print(results)
 '''
 # Example usage
 file_paths = [
-    "test/metrics/fairness_results/outputs_1_a/priv.csv", "test/metrics/fairness_results/outputs_1_b/priv.csv", 
-    "test/metrics/fairness_results/outputs_2_a/priv.csv", "test/metrics/fairness_results/outputs_2_b/priv.csv"
+    "results_metrics/fairness_results/outputs_1_a/priv.csv", "results_metrics/fairness_results/outputs_1_b/priv.csv", 
+    "results_metrics/fairness_results/outputs_2_a/priv.csv", "results_metrics/fairness_results/outputs_2_b/priv.csv"
 ]
 
 # Step 5: Load and process the data
@@ -102,8 +102,8 @@ print(results)
 
 
 file_paths = [
-    "test/times/fair_double/timing_1a_total.csv", "test/times/fair_double/timing_1b_total.csv", 
-    "test/times/fair_double/timing_2a.csv", "test/times/fair_double/timing_2b.csv"
+    "results_metrics/others/times/fair_double/timing_1a_total.csv", "results_metrics/others/times/fair_double/timing_1b_total.csv", 
+    "results_metrics/others/times/fair_double/timing_2a.csv", "results_metrics/others/times/fair_double/timing_2b.csv"
 ]
 
 # Step 5: Load and process the data
@@ -137,7 +137,7 @@ def merge_csv_results(input_folder: str, output_file: str):
     merged_df.to_csv(output_file, index=False)
     print(f"Merged CSV saved to {output_file}")
 '''
-merge_csv_results("test/metrics/linkability_results/outputs_1_a/priv", "test/metrics/linkability_results/outputs_1_a/priv/0-merged.csv")
-merge_csv_results("test/metrics/linkability_results/outputs_1_b/priv", "test/metrics/linkability_results/outputs_1_b/priv/0-merged.csv")
-merge_csv_results("test/metrics/linkability_results/outputs_2_a/priv", "test/metrics/linkability_results/outputs_2_a/priv/0-merged.csv")
-merge_csv_results("test/metrics/linkability_results/outputs_2_b/priv", "test/metrics/linkability_results/outputs_2_b/priv/0-merged.csv")'''
+merge_csv_results("results_metrics/linkability_results/outputs_1_a/priv", "results_metrics/linkability_results/outputs_1_a/priv/0-merged.csv")
+merge_csv_results("results_metrics/linkability_results/outputs_1_b/priv", "results_metrics/linkability_results/outputs_1_b/priv/0-merged.csv")
+merge_csv_results("results_metrics/linkability_results/outputs_2_a/priv", "results_metrics/linkability_results/outputs_2_a/priv/0-merged.csv")
+merge_csv_results("results_metrics/linkability_results/outputs_2_b/priv", "results_metrics/linkability_results/outputs_2_b/priv/0-merged.csv")'''
