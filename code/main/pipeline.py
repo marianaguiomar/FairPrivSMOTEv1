@@ -10,9 +10,10 @@ import re
 from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column, process_protected_attributes, print_class_combinations, check_protected_attribute
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from main.fair_in_private import smote_v1, smote_v2, smote_v3
+from main.fair_priv_smote import smote_v1, smote_v2, smote_v3
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 from metrics.metrics import process_linkability, process_fairness
+from metrics.plots import plot_feature_across_files
 
 # ------------ DEFAULT VALUES ------------
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
@@ -368,12 +369,29 @@ def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, 
         process_files_in_folder(timing_folder, input_folder)
 
 
+        
+input_folder_name = "others"
+final_folder_name = "others_test"
+method_number = "3"
 
+# ------- SMOTE --------
 #method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
-#method_3("datasets/inputs/others", args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv", majority=True, final_folder_name=None)
+method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv", majority=True, final_folder_name=final_folder_name)
 
-process_linkability("datasets/outputs/outputs_3/others", "priv")
-#process_fairness("datasets/outputs/outputs_3/others")
+# ------- METRICS --------
+process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "priv")
+process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
+        
+# ------- PLOTTING --------
+folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number}"  # Replace with your actual folder path
+folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
+
+features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
+for feature_name in features_fairness:
+    plot_feature_across_files(folder_path_fairness, feature_name)
+
+plot_feature_across_files(folder_path_linkability, "value")
+

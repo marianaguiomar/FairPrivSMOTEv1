@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import sys
-from .generate_samples_private import apply_fairsmote, apply_fairsmote_singleouts, apply_new, apply_new_replaced, apply_fully_replaced
+from generate_samples import apply_fairsmote, apply_fairsmote_singleouts, apply_new, apply_new_replaced, apply_fully_replaced
 import re
 import time
 

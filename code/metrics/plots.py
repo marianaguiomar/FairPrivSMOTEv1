@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-def plot_feature_across_files(folder_path, feature):
+def plot_feature_across_files(folder_path, feature, label_method = False):
     """
     Create a boxplot for a specific feature across multiple CSV files in a folder.
     
@@ -29,11 +29,14 @@ def plot_feature_across_files(folder_path, feature):
         if file.endswith(".csv"):
             df = pd.read_csv(file)
             parts = file.split("/")  # Split by "/"
-            method = parts[3]  # "outputs_1_a"
-            dataset_folder = parts[4]  # "test_input_10"
+            method = parts[2]  # "outputs_1_a"
+            dataset_folder = parts[3]  # "test_input_10"
             # Check if the feature exists in the file
             if feature in df.columns:
-                data[f'{method}/{dataset_folder}'] = df[feature].dropna().values  # Store non-NaN values
+                if label_method:
+                    data[f'{method}/{dataset_folder}'] = df[feature].dropna().values  # Store non-NaN values
+                else:
+                    data[f'{dataset_folder}'] = df[feature].dropna().values
     
     # Convert to DataFrame for plotting
     if not data:
@@ -106,13 +109,13 @@ def plot_time_across_files(folder_path, feature):
     plt.show()
 
 # Example usage
-    
+'''  
 folder_path_fairness = "results_metrics/fairness_results/to_plot"  # Replace with your actual folder path
 features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 
 for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)
-
+'''
 '''
 folder_path_time = "times"  # Replace with your actual folder path
 features_time = ['time taken (s)', 'time per sample']
