@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import ast
-from fairness_metrics import compute_fairness_metrics
+from metrics.fairness_metrics import compute_fairness_metrics
 import time
 import math
 import argparse
@@ -11,14 +11,18 @@ import numpy as np
 import sys 
 import itertools
 import subprocess
+from metrics.linkability import linkability
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column
+from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter
 
+# ------ LINKABILITY ------
 def run_linkability(folder_path, dir, og = False):
 
     file_list = [file for _, _, files in os.walk(folder_path) for file in files]  
     total_files = len(file_list) 
+
+    results = []
             
     # Loop through each file and each value of nqi (0, 1, 2, 3,4)
     for idx, file in enumerate(file_list, start=1):
@@ -39,105 +43,154 @@ def run_linkability(folder_path, dir, og = False):
 
         print(f"orig file: {orig_file}")
         print(f"transf file: {transf_file}")
-        subprocess.run([
-        'python', 'code/metrics/linkability.py',  # Path to the linkability.py script
-        '--orig_file', orig_file,        # Path to the original file
-        '--transf_file', transf_file,           # Path to the transformed file
-        '--control_file', orig_file,
-        '--key_vars', *key_vars[nqi],   # Pass the sublist of key_vars corresponding to ds and nqi
-        '--nqi_number', str(nqi)
-        ])
 
-def calculate_average_std_risk_and_ci(folder_name, file_paths):
+        
+        value, ci = linkability(orig_file, transf_file, orig_file, key_vars[nqi], nqi)
+        results.append({"file":file, "value": value, "ci": ci})
+
+    df = pd.DataFrame(results)
+    new_folder_path = os.path.join(*os.path.normpath(folder_path).split(os.sep)[-2:])
+
+    df_sorted = ds_name_sorter(df)
+    output_csv = f"results_metrics/linkability_results/{new_folder_path}.csv"
+    df_sorted.to_csv(output_csv, index=False)
+    print(f"\nSaved combined results to: {output_csv}")
+
+def average_linkability(folder_path, combined_file_path, std=False):
     """
-    Calculate the average risk, standard deviation, and confidence interval (CI) from multiple files.
-
+    Calculate the average risk and confidence intervals (CI) from a combined results CSV file.
+    
     Parameters:
-    - folder_name (str): The name of the folder from which the files originate (to be used in the results file).
-    - file_paths (list): List of file paths to CSV files containing 'value' and 'ci' columns.
-
+    - combined_file_path (str): The path to the combined result CSV file containing 'value' and 'ci' columns.
+    - std (bool, optional): Whether to calculate standard deviations. Default is False (does not calculate std).
+    
     Returns:
-    - dict: A dictionary containing the folder name, average risk, standard deviation, lower CI bound, and upper CI bound.
+    - dict: A dictionary containing the folder name, average risk, lower CI bound, upper CI bound, 
+            and optionally standard deviations if std=True.
     """
-    total_values = []
-    lower_bounds = []
-    upper_bounds = []
-
-    for file in file_paths:
-        if os.path.exists(file):
-            df = pd.read_csv(file)
-            print(f"🔍 Processing file: {file}")  # Debug: Print file being processed
-            print(f"📊 Columns in {file}: {df.columns.tolist()}")  # Debug: Print column names
+    # Read the combined result CSV file
+    if os.path.exists(combined_file_path):
+        df = pd.read_csv(combined_file_path)
+        
+        if 'value' in df.columns and 'ci' in df.columns:
+            # Extract values and confidence intervals
+            total_values = df['value'].tolist()
+            ci_values = df['ci'].apply(ast.literal_eval)  
             
-            if 'value' in df.columns and 'ci' in df.columns:
-                total_values.extend(df['value'].tolist())  # Store all risk values
-                
-                # Convert CI string tuples to actual tuples
-                ci_values = df['ci'].apply(ast.literal_eval)  
-                lower_bounds.extend(ci_values.apply(lambda x: x[0]))
-                upper_bounds.extend(ci_values.apply(lambda x: x[1]))
+            # Separate the CI into lower and upper bounds
+            lower_bounds = ci_values.apply(lambda x: x[0]).tolist()
+            upper_bounds = ci_values.apply(lambda x: x[1]).tolist()
+            
+            # Calculate averages
+            average_risk = np.mean(total_values)
+            average_ci_lower = np.mean(lower_bounds) if lower_bounds else 0
+            average_ci_upper = np.mean(upper_bounds) if upper_bounds else 0
+            
+            # Calculate standard deviations if std=True
+            if std:
+                std_risk = np.std(total_values, ddof=1)  # Use ddof=1 for sample std
+                std_ci_lower = np.std(lower_bounds, ddof=1) if lower_bounds else 0
+                std_ci_upper = np.std(upper_bounds, ddof=1) if upper_bounds else 0
+                result = {
+                    "folder_name": folder_path,
+                    "average_risk": average_risk,
+                    "std_risk": std_risk,
+                    "average_ci_lower": average_ci_lower,
+                    "average_ci_upper": average_ci_upper,
+                    "std_ci_lower": std_ci_lower,
+                    "std_ci_upper": std_ci_upper
+                }
             else:
-                print(f"⚠️ Warning: Required columns not found in {file}")
+                result = {
+                    "folder_name": folder_path,
+                    "average_risk": average_risk,
+                    "average_ci_lower": average_ci_lower,
+                    "average_ci_upper": average_ci_upper
+                }
+
+            return result
         else:
-            print(f"⚠️ Warning: File {file} not found.")
+            print(f"Warning: 'value' or 'ci' columns not found in {combined_file_path}")
+            return None
+    else:
+        print(f"Warning: Combined file {combined_file_path} not found.")
+        return None
 
-    if not total_values:
-        return {
-            "folder_name": folder_name,
-            "average_risk": 0, 
-            "std_risk": 0, 
-            "average_ci_lower": 0, 
-            "average_ci_upper": 0,
-            "std_ci_lower": 0,
-            "std_ci_upper": 0
-        }
-
-    # Calculate averages
-    average_risk = np.mean(total_values)
-    average_ci_lower = np.mean(lower_bounds) if lower_bounds else 0
-    average_ci_upper = np.mean(upper_bounds) if upper_bounds else 0
-
-    # Calculate standard deviations
-    std_risk = np.std(total_values, ddof=1)  # Use ddof=1 for sample std
-    std_ci_lower = np.std(lower_bounds, ddof=1) if lower_bounds else 0
-    std_ci_upper = np.std(upper_bounds, ddof=1) if upper_bounds else 0
-
-    return {
-        "folder_name": folder_name,
-        "average_risk": average_risk,
-        "std_risk": std_risk,
-        "average_ci_lower": average_ci_lower,
-        "average_ci_upper": average_ci_upper,
-        "std_ci_lower": std_ci_lower,
-        "std_ci_upper": std_ci_upper
-    }
-
-def calculate_average_std_fairness(input_folder):
+def process_linkability(input_folder, ds_type, output_file = "results_metrics/linkability_results/linkability_summary.csv", std=False, ):
     """
-    Calculate the average fairness metrics (like recall, F1, DI, etc.) from multiple files, 
-    ignoring NaN values.
-    
+    Process a single folder and write the calculated statistics to a CSV file.
+
     Parameters:
-    - file_paths (list): List of file paths to CSV files containing fairness metrics.
-    - protected_attribute (str): The protected attribute to calculate fairness metrics for.
-    
-    Returns:
-    - dict: A dictionary containing the average fairness metrics.
+    - folder (str): The path to the folder containing the CSV files.
+    - output_file (str): Path to the output CSV file.
+    - std (bool, optional): Whether to calculate standard deviations. Default is False.
     """
-    # Initialize accumulators for each metric and counters to handle NaN
-    metrics = ["Recall", "FAR", "Precision", "Accuracy", "F1 Score", "ROC AUC", 
+
+    # ------- run linkability -------
+    run_linkability(input_folder, ds_type)
+
+
+    # ------- calculate average linkability -------
+    base_folder = os.path.normpath(input_folder).split(os.sep)[-2]
+    all_results = []
+
+    results_folder = os.path.join("results_metrics", "linkability_results", base_folder)
+    print(f"Processing folder: {results_folder}")
+    
+    # Get all CSV files in the folder
+    file_paths = [os.path.join(results_folder, f) for f in os.listdir(results_folder) if f.endswith('.csv')]
+    
+    # Process each file and append results
+    for file_path in file_paths:
+        # Call the function to calculate stats for each file
+        result = average_linkability(input_folder, file_path, std)  # Pass the file as a list
+        
+        # Append the result to the list
+        if result:
+            all_results.append(result)
+
+    # Determine the fieldnames based on whether 'std' is True or False
+    if std:
+        fieldnames = ["folder_name", "average_risk", "std_risk", 
+                      "average_ci_lower", "average_ci_upper", 
+                      "std_ci_lower", "std_ci_upper"]
+    else:
+        fieldnames = ["folder_name", "average_risk", 
+                      "average_ci_lower", "average_ci_upper"]
+    
+    # Write the results to a CSV file
+    with open(output_file, mode='w', newline='') as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()  # Write the header
+        writer.writerows(all_results)  # Write the data
+
+    print(f"Results saved to {output_file}")
+
+
+# ------ PERFORMANCE AND FAIRNESS
+    
+def average_fairness(input_folder, std=False):
+    """
+    Calculate the average (and optionally standard deviation) of fairness metrics from multiple files,
+    ignoring NaN values.
+
+    Parameters:
+    - input_folder (str): Path to the folder containing fairness metrics CSV files.
+    - std (bool): Whether to calculate and include standard deviations. Default is False.
+
+    Returns:
+    - dict: Dictionary with average (and optionally std) fairness metrics.
+    """
+    metrics = ["Recall", "FAR", "Precision", "Accuracy", "F1 Score", 
                "AOD_protected", "EOD_protected", "SPD", "DI"]
 
-    # Initialize accumulators
     total_metrics = {metric: 0 for metric in metrics}
     count_metrics = {metric: 0 for metric in metrics}
-    metric_values = {metric: [] for metric in total_metrics}
+    metric_values = {metric: [] for metric in metrics}
 
     total_files = 0
     all_fairness_metrics = []
-    
 
-    # Ensure directory exists
     if not os.path.isdir(input_folder):
         print("Error: Directory does not exist.")
         return None
@@ -149,189 +202,103 @@ def calculate_average_std_fairness(input_folder):
             match_dataset_name = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file_name)
             dataset_name = match_dataset_name.group(1)
 
-            #match_protected_attribute = re.search(r"_(\w+)\.csv$", file_name)  # Extracts protected attribute before ".csv"
-            match_protected_attribute = re.search(r'_(\w+)_QI', file_name)  # Extracts protected attribute before ".csv"
+            match_protected_attribute = re.search(r'_(\w+)_QI', file_name)
             protected_attribute = match_protected_attribute.group(1)
             class_column = get_class_column(dataset_name, "class_attribute.csv")
 
-            print(f"\nProcessing file: {file_path} with protected attribute {protected_attribute} and class {class_column}")  # Debug: Print file being processed
-            # Compute fairness metrics for the current file
+            print(f"\nProcessing file: {file_path} with protected attribute {protected_attribute} and class {class_column}")
             fairness_metrics = compute_fairness_metrics(file_path, protected_attribute, class_column)
             file_metrics = {"File": file_name}
-            # Add the metrics to the total sums, ignoring NaN values
+
             for metric, value in fairness_metrics.items():
-                if metric in total_metrics and not (math.isnan(value) or math.isinf(value)):  # Ignore NaN, inf, and -inf values
+                if metric in total_metrics and not (math.isnan(value) or math.isinf(value)):
                     total_metrics[metric] += value
-                    count_metrics[metric] += 1  # Count valid entries for averaging
-                    metric_values[metric].append(value)  # Store individual values for std calculation
-                    file_metrics[metric] = value  # Store per-file metric
+                    count_metrics[metric] += 1
+                    metric_values[metric].append(value)
+                    file_metrics[metric] = value
             
             total_files += 1
             all_fairness_metrics.append(file_metrics)
 
-        else:
-            print(f"Warning: File {file_path} not found.")
-
     if total_files == 0:
-        return {"folder_name": input_folder, **{metric: 0 for metric in total_metrics}}
+        return {"folder_name": input_folder, **{metric + "_avg": 0 for metric in metrics}}
 
-    # Save to Excel (use Pandas to write to an Excel file)
-    parts = input_folder.split("/")  
-    file_output_path = f"results_metrics/fairness_results/{parts[1]}"
-    os.makedirs(file_output_path, exist_ok=True)
+    # Save individual metrics to CSV
+    parts = input_folder.split("/")
+    
     results_df = pd.DataFrame(all_fairness_metrics)
-    results_df_sorted = results_df.sort_values(by="File")
-    results_df_sorted.to_csv(f"{file_output_path}/{parts[2]}.csv", index=False)
-    print(f"stored in: {file_output_path}/{parts[2]}.csv")
 
-    # Calculate the averages, using the valid counts to avoid division by zero
+    new_folder_path = os.path.join(*os.path.normpath(input_folder).split(os.sep)[-2:])
+    output_csv = f"results_metrics/fairness_results/{new_folder_path}.csv"
+    #results_df_sorted = results_df.sort_values(by="File")
+    df_sorted = ds_name_sorter(results_df, "File")
+    df_sorted.to_csv(output_csv, index=False)
+    print(f"Stored in: {output_csv}")
+
+    # Compute averages (and optionally stds)
     average_fairness = {"folder_name": input_folder}
-    for metric, total in total_metrics.items():
+    for metric in metrics:
         count = count_metrics[metric]
         if count > 0:
-            average_fairness[f"{metric}_avg"] = total / count  # Calculate valid average
-            average_fairness[f"{metric}_std"] = np.std(metric_values[metric], ddof=1)  # Compute std deviation
+            average_fairness[f"{metric}_avg"] = total_metrics[metric] / count
+            if std:
+                average_fairness[f"{metric}_std"] = np.std(metric_values[metric], ddof=1)
         else:
             average_fairness[f"{metric}_avg"] = 0
-            average_fairness[f"{metric}_std"] = 0
+            if std:
+                average_fairness[f"{metric}_std"] = 0
 
     return average_fairness
 
-def fairness_csv(input_folder):   
+def process_fairness(input_folder, output_file="results_metrics/fairness_results/fairness_summary.csv", std=False):
+    """
+    Process a single folder and write the calculated fairness statistics to a CSV file.
 
-    #calculate average fairness metrics
-    average_fairness = calculate_average_std_fairness(input_folder)
-    print(f"Average Fairness: {average_fairness}")
-
-    #save results to a CSV file
-    average_fairness_df = pd.DataFrame(list(average_fairness.items()), columns=["Metric", "Value"])
-    
-    # Extract parts from the input folder
-    parts = input_folder.split("/")  # Split path by "/"
-    
-    if len(parts) >= 3 and parts[0] == "test":  
-        method = parts[1]  # "outputs_1_a"
-        datasets_folder = parts[2]    # "test_input_10"
-    else:
-        print("Error: Invalid input folder format")
-        return
-    
-    output_folder = f"results_metrics/averages/{datasets_folder}"
-    os.makedirs(output_folder, exist_ok=True)
-    
-    output_file = f"{output_folder}/average_fairness_{method}.csv"  # Specify your output file name
-    average_fairness_df.to_csv(output_file, index=False)
-    print(f"Average fairness metrics saved to {output_file}")
-
-    return datasets_folder, average_fairness  # Return folder name & results
-
-def linkability_csv(linkability_file_list):
-    #calculate average linkability
-    average_risk = calculate_average_std_risk_and_ci(linkability_file_list)
-    print(f"Average Risk: {average_risk}")
-
-    #save results to a CSV file
-    average_linkability_df = pd.DataFrame(list(average_risk.items()), columns=["Metric", "Value"])
-    output_file = "combined_test/averages/average_linkability_original.csv"  # Specify your output file name
-    average_linkability_df.to_csv(output_file, index=False)
-    print(f"Average linkability metrics saved to {output_file}")
-
-
-def process_single_folder_fairness(input_folder):
-    """Process a single folder and call fairness_csv."""
+    Parameters:
+    - input_folder (str): The path to the folder containing the fairness result CSVs.
+    - output_file (str): Path to the output CSV file.
+    - std (bool, optional): Whether to calculate standard deviations. Default is False.
+    """
     if not os.path.exists(input_folder) or not os.path.isdir(input_folder):
         print(f"Error: Path '{input_folder}' does not exist or is not a directory.")
         return
 
-    # Extract method ("outputs_1_a") and dataset folder ("test_input_10")
-    parts = input_folder.split("/")  # Split by "/"
-    method = parts[1]  # "outputs_1_a"
-    dataset_folder = parts[2]  # "test_input_10"
+    print(f"Processing folder: {input_folder}")
 
-    # Call fairness_csv for the provided folder
-    result = fairness_csv(input_folder)
-    
-    if result:
-        _, metrics = result  # Ignore dataset_folder (already extracted)
-        metrics["Dataset"] = dataset_folder  # Add dataset name to metrics
+    # ------- calculate average -------
+    result = average_fairness(input_folder, std=std)
 
-        # Convert the results to a DataFrame
-        new_data = pd.DataFrame([metrics])  # Single-row DataFrame
+    if not result:
+        print("⚠️ No valid result found to process.")
+        return
 
-        # Define output file path
-        output_file = f"results_metrics/averages/{method}.csv"
-        
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    # ------- write the average -------
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-        # Check if file already exists
-        if os.path.exists(output_file):
-            # If file exists, read it and append new data
-            existing_data = pd.read_csv(output_file)
-            final_df = pd.concat([existing_data, new_data], ignore_index=True)
-        else:
-            # If file doesn't exist, create it with the new data
-            final_df = new_data
+    # Determine fieldnames from the result keys
+    fieldnames = list(result.keys())
 
-        # Save the updated results back to CSV
-        final_df.to_csv(output_file, index=False)
+    # Write or append to the CSV
+    if os.path.exists(output_file):
+        # If file exists, read and append
+        existing_df = pd.read_csv(output_file)
+        new_row = pd.DataFrame([result])
+        final_df = pd.concat([existing_df, new_row], ignore_index=True)
     else:
-        print("No valid result found to process.")
+        # Create new DataFrame
+        final_df = pd.DataFrame([result])
 
-def process_folders_linkability(folders, output_file):
-    """
-    Process multiple folders and write the calculated statistics to a CSV file.
-
-    Parameters:
-    - folders (list): List of folder paths containing the CSV files.
-    - output_file (str): Path to the output CSV file.
-    """
-    all_results = []
-    
-    # Loop through each folder
-    for folder in folders:
-        print(f"Processing folder: {folder}")
-        
-        # Get all CSV files in the folder
-        file_paths = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith('.csv')]
-        
-        # Call the function to calculate stats
-        result = calculate_average_std_risk_and_ci(folder, file_paths)
-        
-        # Append the result to the list
-        all_results.append(result)
-    
-    # Write the results to a CSV file
-    with open(output_file, mode='w', newline='') as file:
-        writer = csv.DictWriter(file, fieldnames=["folder_name", "average_risk", "std_risk", 
-                                                  "average_ci_lower", "average_ci_upper", 
-                                                  "std_ci_lower", "std_ci_upper"])
-        writer.writeheader()  # Write the header
-        writer.writerows(all_results)  # Write the data
-
-    print(f"Results saved to {output_file}")
+    # Save to CSV
+    final_df.to_csv(output_file, index=False)
+    print(f"Fairness results saved to {output_file}")
 
 
-def generate_folders(base_path, output_sets, categories):
-    return [f"{base_path}/{output}/{category}" for output, category in itertools.product(output_sets, categories)]
 
-folder_list = generate_folders(
-    base_path="results_metrics/linkability_results",
-    #output_sets=["outputs_1_a", "outputs_1_b", "outputs_2_a", "outputs_2_b"],
-    output_sets=["outputs_3"],
-    categories=["fair_bigger","priv_bigger"]
-)
-#process_folders_linkability(folder_list, "results_metrics/linkability_results/linkability_v3_summary.csv")
 
-#TODO -> corrigir istos
-run_linkability("datasets/outputs/outputs_3/others", "priv")
+#process_linkability("datasets/outputs/outputs_3/others", "priv")
+#process_fairness("datasets/outputs/outputs_3/others")
 
-#process_single_folder_fairness("datasets/outputs/outputs_3/fair30v2")
-#process_single_folder_fairness("datasets/outputs/outputs_3/priv50_qis")
-#process_single_folder_fairness("datasets/outputs/outputs_3/fair50")
-#process_single_folder_fairness("datasets/outputs/outputs_3/priv50")
-#process_single_folder_fairness("datasets/outputs/outputs_3/fair_bigger")
-#process_single_folder_fairness("datasets/outputs/outputs_3/priv_bigger")
 
 
 

@@ -12,6 +12,7 @@ from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_c
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.fair_in_private import smote_v1, smote_v2, smote_v3
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
+from metrics.metrics import process_linkability, process_fairness
 
 # ------------ DEFAULT VALUES ------------
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
@@ -372,4 +373,7 @@ def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, 
 #method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
-method_3("datasets/inputs/others", args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv", majority=True, final_folder_name=None)
+#method_3("datasets/inputs/others", args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv", majority=True, final_folder_name=None)
+
+process_linkability("datasets/outputs/outputs_3/others", "priv")
+#process_fairness("datasets/outputs/outputs_3/others")

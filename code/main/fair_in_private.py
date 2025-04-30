@@ -34,7 +34,7 @@ def smote_v1(version, input_folder, output_folder, class_col_file):
         match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file_name)
         dataset_name = match.group(1)
 
-        protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
+        protected_attributes = process_protected_attributes(dataset_name, "protected_attributes.csv")
         
         class_column = get_class_column(dataset_name, class_col_file)
 
@@ -121,7 +121,7 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
         dataset_name_match = re.match(r'^(.*?).csv', file_name)
         dataset_name = dataset_name_match.group(1)
 
-        protected_attributes = process_protected_attributes(dataset_name, "test/protected_attributes.csv")
+        protected_attributes = process_protected_attributes(dataset_name, "protected_attributes.csv")
 
         class_column = get_class_column(dataset_name, class_col_file)
 

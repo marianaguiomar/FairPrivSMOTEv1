@@ -3,6 +3,7 @@ import ast
 import os
 import numpy as np
 import pandas as pd
+import re
 
 def get_key_vars(file_name, key_vars_file):
     '''
@@ -216,3 +217,52 @@ def print_class_combinations(file_path, class_column, protected_attribute):
     for (cls, attr), count in combo_counts.items():
         percent = (count / total_rows) * 100
         print(f"Class {cls}, Protected {attr}: {count} ({percent:.2f}%)")
+
+# Helper function to sort files based on the numeric part of the filename
+# Helper function to sort files based on the numeric part of the filename, QI, and dataset name
+def ds_name_sorter(df, file_column='file'):
+    """
+    Sorts a DataFrame by the dataset name, numeric part of the filename, and QI number.
+    Args:
+        df (pd.DataFrame): DataFrame containing a 'file' column with filenames to sort.
+        file_column (str): Name of the column containing the filenames. Default is 'file'.
+    
+    Returns:
+        pd.DataFrame: Sorted DataFrame.
+    """
+    # Function to extract the dataset name (the first part of the filename before the underscore)
+    def extract_dataset_name(filename):
+        return filename.split('_')[0]
+
+    # Function to extract numeric part after the underscore (e.g., 0.1, 0.5)
+    def extract_numeric_part(filename):
+        # Split by underscore and take the part before the first hyphen or end of string
+        number_part = filename.split('_')[1].split('-')[0]
+        return float(number_part)  # Convert to float for proper sorting
+
+    # Function to extract QI number from filename (e.g., QI0, QI1, etc.)
+    def extract_qi_number(filename):
+        match = re.search(r"QI(\d+)", filename)
+        return int(match.group(1)) if match else 0
+
+    # Function to check if a value is numeric
+    def is_numeric(value):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
+    # Apply functions to extract dataset names, numeric parts, and QI numbers
+    df['dataset_name'] = df[file_column].apply(extract_dataset_name)
+    df['num_part'] = df[file_column].apply(extract_numeric_part)
+    df['qi_number'] = df[file_column].apply(extract_qi_number)
+
+    # Sort by dataset name (numeric or alphabetically), then numeric part and QI number
+    df_sorted = df.sort_values(by=['dataset_name', 'num_part', 'qi_number'], 
+                               key=lambda col: col.apply(lambda x: float(x) if is_numeric(x) else x))
+
+    # Drop the helper columns
+    df_sorted = df_sorted.drop(columns=['dataset_name', 'num_part', 'qi_number'])
+
+    return df_sorted

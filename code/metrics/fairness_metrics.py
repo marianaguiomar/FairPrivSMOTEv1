@@ -226,9 +226,9 @@ def compute_fairness_metrics(file_path, protected_attribute, class_column):
         "Precision": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision', class_column),
         "Accuracy": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy', class_column),
         "F1 Score": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1', class_column),
-        "ROC AUC": roc_auc,
-        f"AOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod', class_column),
-        f"EOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod', class_column),
+        #"ROC AUC": roc_auc,
+        "AOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod', class_column),
+        "EOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod', class_column),
         "SPD": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'SPD', class_column),
         "DI": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'DI', class_column),
     }

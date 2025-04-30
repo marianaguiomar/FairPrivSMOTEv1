@@ -94,7 +94,7 @@ def process_student(file_path):
     dataset_orig['age'] = pd.cut(dataset_orig['age'], bins=age_bins, labels=age_labels, right=False)
 
     # Save the processed dataset
-    output_path = f"test/inputs/fair/student.csv"
+    output_path = f"datasets/inputs/fair/student.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -136,7 +136,7 @@ def process_german():
     dataset_orig = dataset_orig[columns]
 
     # Save the processed dataset
-    output_path = f"test/inputs/fair/german.csv"
+    output_path = f"datasets/inputs/fair/german.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -169,7 +169,7 @@ def process_credit():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/fair/credit.csv"
+    output_path = f"datasets/inputs/fair/credit.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -214,7 +214,7 @@ def process_diabetes():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/fair/diabetes.csv"
+    output_path = f"datasets/inputs/fair/diabetes.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -248,7 +248,7 @@ def process_ricci():
     dataset_orig = dataset_orig[columns]
     '''
     # Save the processed dataset
-    output_path = f"test/inputs/fair/ricci.csv"
+    output_path = f"datasets/inputs/fair/ricci.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -286,7 +286,7 @@ def process_oulad():
     dataset_orig = dataset_orig[columns]
     '''
     # Save the processed dataset
-    output_path = f"test/inputs/fair/oulad.csv"
+    output_path = f"datasets/inputs/fair/oulad.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -321,7 +321,7 @@ def process_law():
     dataset_orig = dataset_orig[columns]
     '''
     # Save the processed dataset
-    output_path = f"test/inputs/fair/law.csv"
+    output_path = f"datasets/inputs/fair/law.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
@@ -360,13 +360,13 @@ def process_kdd():
     dataset_orig['age'] = pd.cut(dataset_orig['age'], bins=age_bins, labels=age_labels, right=False)
 
     # Save the processed dataset
-    output_path = f"test/inputs/fair/kdd.csv"
+    output_path = f"datasets/inputs/fair/kdd.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_3():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/3.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/3.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -379,13 +379,13 @@ def process_3():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/3.csv"
+    output_path = f"datasets/inputs/priv/3.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_8():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/8.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/8.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -397,13 +397,13 @@ def process_8():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/8.csv"
+    output_path = f"datasets/inputs/priv/8.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_10():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/10.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/10.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -415,13 +415,13 @@ def process_10():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/10.csv"
+    output_path = f"datasets/inputs/priv/10.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
     
 def process_13():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/13.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/13.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -443,13 +443,13 @@ def process_13():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/13.csv"
+    output_path = f"datasets/inputs/priv/13.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_28():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/28.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/28.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -463,13 +463,13 @@ def process_28():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/28.csv"
+    output_path = f"datasets/inputs/priv/28.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_33():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/33.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/33.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -490,26 +490,26 @@ def process_33():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/33.csv"
+    output_path = f"datasets/inputs/priv/33.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_37():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/37.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/37.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/37.csv"
+    output_path = f"datasets/inputs/priv/37.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_55():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/55.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/55.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
@@ -518,19 +518,19 @@ def process_55():
 
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/55.csv"
+    output_path = f"datasets/inputs/priv/55.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 
 def process_56():
     # Load dataset
-    dataset_orig = pd.read_csv("original_datasets/priv/56.csv")
+    dataset_orig = pd.read_csv("datasets/ds_original/priv/56.csv")
 
     ## Drop NULL values
     dataset_orig = dataset_orig.dropna()
 
     # Save the processed dataset
-    output_path = f"test/inputs/priv/56.csv"
+    output_path = f"datasets/inputs/priv/56.csv"
     dataset_orig.to_csv(output_path, index=False)
     print(f"Processed file saved: {output_path}")
 

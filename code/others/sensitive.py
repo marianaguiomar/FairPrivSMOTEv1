@@ -217,7 +217,7 @@ def label_imbalance(dt):
     return sensitive_attr_columns  # Return the list of sensitive attribute columns
 
 
-folder_path = "original_datasets/priv_full"
+folder_path = "datasets/ds_original/priv_full"
 datasets_with_binaries = process_datasets_in_folder(folder_path)
 
 for dataset in datasets_with_binaries:
@@ -229,4 +229,4 @@ for dataset in datasets_with_binaries:
     
     
 
-print(process_datasets_in_folder("original_datasets/priv"))
+print(process_datasets_in_folder("datasets/ds_original/priv"))
