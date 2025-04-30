@@ -197,3 +197,22 @@ def binary_columns_percentage(input_file, class_column):
     }
 
     return binary_cols, binary_percentages
+
+def print_class_combinations(file_path, class_column, protected_attribute):
+    data = pd.read_csv(file_path)
+    
+    total_rows = len(data)
+    
+    # Class-level stats
+    class_counts = data[class_column].value_counts().sort_index()
+    print("\nClass distribution:")
+    for cls, count in class_counts.items():
+        percent = (count / total_rows) * 100
+        print(f"Class {cls}: {count} ({percent:.2f}%)")
+
+    # Subclass-level stats (class + protected attribute)
+    combo_counts = data.groupby([class_column, protected_attribute]).size()
+    print("\nSubclass (class, protected_attribute) distribution:")
+    for (cls, attr), count in combo_counts.items():
+        percent = (count / total_rows) * 100
+        print(f"Class {cls}, Protected {attr}: {count} ({percent:.2f}%)")

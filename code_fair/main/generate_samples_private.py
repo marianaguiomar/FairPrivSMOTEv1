@@ -276,31 +276,27 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, 
         new_candidate = []
         for key, value in parent_candidate.items():
             col_index = df.columns.get_loc(key)
-
             # Preserve original value if 'replace' is True and this is a protected or class column
             if replace and key in [protected_column, class_column]:
                 new_candidate.append(value)
                 continue
 
-            if binary_columns and key in binary_columns:
+            if binary_columns and col_index in binary_columns:
                 # --- Custom rule for binary columns ---
                 rand_val = np.random.rand()
                 threshold = binary_columns_percentage.get(key, 0.5)  # Use 0.5 as fallback if key not present
                 new_candidate.append(1 if rand_val <= threshold else 0)
-            
+                continue                
 
             if isinstance(parent_candidate[key], bool):
-                #print("its bool")
                 new_candidate.append(parent_candidate[key] if cr < random.random() else not parent_candidate[key])
             elif isinstance(parent_candidate[key], str):
-                #print("its str")
                 new_candidate.append(random.choice([
                     parent_candidate[key],
                     child_candidate_1[key],
                     child_candidate_2[key]
                 ]))
             elif isinstance(parent_candidate[key], list):
-                #print("its list")
                 temp_lst = []
                 for i in range(len(parent_candidate[key])):
                     temp_lst.append(
@@ -309,7 +305,6 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, 
                     )
                 new_candidate.append(temp_lst)
             else:
-                #print("its numeric")
                 noise = np.multiply(
                     child_candidate_1[key] - child_candidate_2[key],
                     np.random.laplace(0, 1 / epsilon)
@@ -673,6 +668,9 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
     # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
+    # Print number of single-outs
+    num_single_outs = (dataset['single_out'] == 1).sum()
+    print(f"Key_vars: {key_vars}, Number of single-outs: {num_single_outs}")
 
     # --- Step 2: Count class + protected attribute combinations ---
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
@@ -706,6 +704,7 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
                 df_minority[class_tuple][col] = df_minority[class_tuple][col].astype(str)
 
     # --- Step 5: Replace single-outs in majority class ---
+    print(f"df_majority samples before: {len(df_majority)}")
     if 'single_out' in df_majority.columns:
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
@@ -715,7 +714,8 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
                 len(df_majority_single_out), df_majority_single_out.select_dtypes(include=[np.number]), epsilon, binary_columns, binary_columns_percentage, replace=True, protected_column=protected_attribute, class_column=class_column
             )
             df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
-    
+    print(f"df_majority samples after: {len(df_majority)}")
+
     # --- Step 6: Handle minority classes ---
     generated_data = []
     cleaned_minority_data = []
@@ -743,9 +743,10 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
         base_for_augment = df_subset.select_dtypes(include=[np.number])
         print(f"Base for augmentation: {len(base_for_augment)} rows")
         n_samples = int(len(df_subset) * augmentation_rate)
-        if not base_for_augment.empty and len(base_for_augment) >= 3 and n_samples > 0:
-            print(f"Generating {n_samples} samples for {class_tuple}")
-            augmented = generate_samples_fully_replaced(n_samples, base_for_augment, epsilon, binary_columns, binary_columns_percentage)
+        num_samples = int(samples_to_increase[class_tuple] * augmentation_rate)
+        if not base_for_augment.empty and len(base_for_augment) >= 3 and num_samples > 0:
+            print(f"Generating {num_samples} samples for {class_tuple}")
+            augmented = generate_samples_fully_replaced(num_samples, base_for_augment, epsilon, binary_columns, binary_columns_percentage)
             generated_data.append(augmented)
         print("\n")
     

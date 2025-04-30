@@ -7,12 +7,18 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KDTree
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import roc_auc_score
+from sklearn.preprocessing import StandardScaler
+
 
 
 def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class_column, metric='aod',):
-    
+    #print("Training labels distribution:", np.unique(y_train, return_counts=True))
+    #print("Testing labels distribution:", np.unique(y_test, return_counts=True))
+
     clf.fit(x_train, y_train)
     y_pred = clf.predict(x_test)
+
+    print(np.unique(y_pred, return_counts=True))
 
     TN, FP, FN, TP = confusion_matrix(y_test, y_pred).ravel()
     #print(f"confusion matrix -> TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
@@ -193,13 +199,17 @@ def compute_fairness_metrics(file_path, protected_attribute, class_column):
     X = dt.drop(columns=[class_column])  # Features (all columns except the target)
     y = dt[class_column]  # Target column
 
-
-    clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100)  # LSR
+    clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100, class_weight='balanced')  # LSR
     dataset_orig_train, dataset_orig_test = train_test_split(pd.concat([X, y], axis=1), test_size=0.3, shuffle=True)
 
     # Extract features and target dynamically
     X_train, y_train = dataset_orig_train.iloc[:, :-1], dataset_orig_train.iloc[:, -1]
     X_test, y_test = dataset_orig_test.iloc[:, :-1], dataset_orig_test.iloc[:, -1]
+
+    # === Standardize features ===
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
     
     clf.fit(X_train, y_train)
 

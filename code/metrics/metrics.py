@@ -119,6 +119,8 @@ def calculate_average_std_fairness(input_folder):
             match_protected_attribute = re.search(r'_(\w+)_QI', file_name)  # Extracts protected attribute before ".csv"
             protected_attribute = match_protected_attribute.group(1)
             class_column = get_class_column(dataset_name, "test/class_attribute.csv")
+
+            print(f"\nProcessing file: {file_path} with protected attribute {protected_attribute} and class {class_column}")  # Debug: Print file being processed
             # Compute fairness metrics for the current file
             fairness_metrics = compute_fairness_metrics(file_path, protected_attribute, class_column)
             file_metrics = {"File": file_name}
@@ -275,23 +277,26 @@ def process_folders_linkability(folders, output_file):
 
     print(f"Results saved to {output_file}")
 
-'''
+
 def generate_folders(base_path, output_sets, categories):
     return [f"{base_path}/{output}/{category}" for output, category in itertools.product(output_sets, categories)]
 
 folder_list = generate_folders(
     base_path="test/metrics/linkability_results",
-    output_sets=["outputs_1_a", "outputs_1_b", "outputs_2_a", "outputs_2_b"],
-    categories=["fair","priv"]
+    #output_sets=["outputs_1_a", "outputs_1_b", "outputs_2_a", "outputs_2_b"],
+    output_sets=["outputs_3"],
+    categories=["fair_bigger","priv_bigger"]
 )
-process_folders_linkability(folder_list, "test/metrics/linkability_results/linkability_summary.csv")
-'''
+process_folders_linkability(folder_list, "test/metrics/linkability_results/linkability_v3_summary.csv")
+
 #TODO -> corrigir istos
 
-process_single_folder_fairness("test/outputs_3/fair50_qis")
-#process_single_folder_fairness("test/outputs_3/priv")
-#process_single_folder_fairness("test/outputs_3/priv")
-#process_single_folder_fairness("test/outputs_3/priv")
+#process_single_folder_fairness("test/outputs_3/fair30v2")
+#process_single_folder_fairness("test/outputs_3/priv50_qis")
+#process_single_folder_fairness("test/outputs_3/fair50")
+#process_single_folder_fairness("test/outputs_3/priv50")
+#process_single_folder_fairness("test/outputs_3/fair_bigger")
+#process_single_folder_fairness("test/outputs_3/priv_bigger")
 
 
 

@@ -288,7 +288,7 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
 
     return timing_results
 
-def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_file):
+def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_file, augmentation_rate):
     for file_name in os.listdir(input_folder):
         file_path = os.path.join(input_folder, file_name)
 
@@ -304,6 +304,7 @@ def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_fil
         class_column = get_class_column(dataset_name, class_col_file)
         key_vars = get_key_vars(file_name, "test/key_vars.csv")
         binary_columns, binary_percentages = binary_columns_percentage(file_path, class_column)
+        print(f"binary_columns: {binary_columns}")
 
 
         for protected_attribute in protected_attributes:
@@ -319,8 +320,9 @@ def smote_v3(input_folder, output_folder, epsilon, timing_results, class_col_fil
             print(f"File '{file_name}' is valid. Proceeding with processing...")
                 
             for i in range(len(key_vars)):
+            #for i in range(1):
                 start_time = time.time()
-                smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column, key_vars[i], binary_columns, binary_columns_percentage, 5, 0.5)
+                smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column, key_vars[i], binary_columns, binary_percentages, 5, augmentation_rate)
                 end_time = time.time()
                 elapsed_time = end_time - start_time
                 timing_results.append({"filename": f'{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}_QI{i}.csv', "time taken (s)": elapsed_time})

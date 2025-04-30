@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import re
-from pipeline_helper import get_key_vars
+from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes
 import warnings
 
 def get_ds_and_qi(file, og):
@@ -79,9 +79,79 @@ def process_folder(folder_path):
     output_path = os.path.join(output_dir, "singleouts.csv")
     results_df.to_csv(output_path, index=False)
     print(f"\nSaved results to {output_path}")
+    
+
+def print_singleouts_info(file_path, class_column, protected_column, key_vars, k=5):
+    """
+    Prints the number of single-outs overall and per (class, protected) combination.
+    
+    Args:
+        file_path (str): Path to the dataset CSV file.
+        class_column (str): Name of the class column.
+        protected_column (str): Name of the protected attribute column.
+        key_vars (list): List of quasi-identifier column names.
+        k (int, optional): k-anonymity parameter. Defaults to 5.
+    """
+    warnings.filterwarnings("ignore")  # Suppress SettingWithCopyWarning
+    
+    # Load dataset
+    df = pd.read_csv(file_path)
+    
+    # Flag single-outs
+    kgrp = df.groupby(key_vars)[key_vars[0]].transform(len)
+    df['single_out'] = (kgrp < k).astype(int)
+    
+    # Print total single-outs
+    total_singleouts = df['single_out'].sum()
+    print(f"\nFile: {os.path.basename(file_path)}")
+    print(f"Key_vars: {key_vars}, Number of single-outs: {total_singleouts}")
+    
+    # Print single-outs per (class, protected) combination
+    print("\nSingle-outs per (class, protected_attribute) combination:")
+    single_out_counts = df[df['single_out'] == 1].groupby([class_column, protected_column]).size()
+    all_combinations = df.groupby([class_column, protected_column]).size().index
+    
+    for comb in all_combinations:
+        count = single_out_counts.get(comb, 0)
+        print(f"  - {comb}: {count}")
+    
+    print("\n")
+
+def process_folder_singleouts(folder_path, k=5):
+    """
+    Processes all CSV files in a folder and prints single-out information per file.
+    
+    Args:
+        folder_path (str): Path to the folder containing CSV files.
+        class_column (str): Name of the class column.
+        protected_column (str): Name of the protected attribute column.
+        key_vars_dict (dict): A dictionary mapping dataset names to their key_vars lists.
+        k (int, optional): k-anonymity parameter. Defaults to 5.
+    """
+    files = [f for f in os.listdir(folder_path) if f.endswith(".csv")]
+    
+    for file in sorted(files):
+        file_path = os.path.join(folder_path, file)
+        
+        # Infer dataset name and number of QIs
+        ds_match = re.match(r'^(.*?).csv', file)
+        ds = ds_match.group(1) if ds_match else None
+        key_vars = get_key_vars(ds, "test/key_vars.csv")
+
+        class_column = get_class_column(ds, "test/class_attribute.csv")  
+        protected_column = process_protected_attributes(ds, "test/protected_attributes.csv") 
+
+        for i in range(len(key_vars)): 
+            for j in range(len(protected_column)):
+                print(f"\nProcessing {file} with key_vars: {key_vars[i]} and protected_column: {protected_column[j]}")
+                print_singleouts_info(file_path, class_column, protected_column[j], key_vars[i], k)
+
 
 # Example usage
-process_folder("test/outputs_1_a/priv")
-process_folder("test/outputs_1_b/priv")
-process_folder("test/outputs_2_a/priv")
-process_folder("test/outputs_2_b/priv")
+#process_folder("test/outputs_1_a/priv")
+#process_folder("test/outputs_1_b/priv")
+#process_folder("test/outputs_2_a/priv")
+#process_folder("test/outputs_2_b/priv")
+#process_folder("test/outputs_3/others")
+                
+process_folder_singleouts("test/inputs/fair30")

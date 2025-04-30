@@ -6,7 +6,7 @@ import pandas as pd
 import sys
 import json
 
-from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column
+from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column, print_class_combinations
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from code_fair.main.fair_in_private import smote_v1, smote_v2, smote_v3
@@ -16,7 +16,7 @@ from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 knn_values = [1, 3, 5]
 per_values = [1, 2, 3]
-default_input_folder = "test/inputs/priv30"
+default_input_folder = "test/inputs/priv_bigger"
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser()
@@ -342,7 +342,7 @@ def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
         #timing_results = smote_new_replaced(dataset_folder, final_output_folder, epsilon, timing_results, "class")
-        timing_results = smote_v3(dataset_folder, final_output_folder, epsilon, timing_results, class_col_file)
+        timing_results = smote_v3(dataset_folder, final_output_folder, epsilon, timing_results, class_col_file, 0.3)
 
     ######################## TIMING ################################
 
@@ -368,7 +368,17 @@ def method_3(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_file
 #method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 #method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-#method_3(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#method_3(args.input_folder, [0.1], args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+method_3(args.input_folder, args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
 
 #method_3("test/inputs/fair_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
-method_3("test/inputs/priv_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+#method_3("test/inputs/priv_qis", args.epsilon, args.knn, args.per, "test/key_vars.csv", "test/class_attribute.csv")
+
+#print_class_combinations("test/inputs/others/adult.csv", "race", "Probability")
+#print_class_combinations("test/outputs_3/others/adult_0.1-privateSMOTE_race_QI0.csv", "race", "Probability")
+
+#print_class_combinations("test/inputs/others/credit.csv", "SEX", "default_payment_next_month")
+#print_class_combinations("test/outputs_3/others/credit_0.1-privateSMOTE_SEX_QI0.csv", "SEX", "default_payment_next_month")
+        
+#print_class_combinations("test/inputs/fair/law.csv", "male", "pass_bar")
+#print_class_combinations("test/inputs/fair/student.csv", "sex", "Probability")
