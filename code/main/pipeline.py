@@ -311,7 +311,7 @@ def method_2_b(dataset_folder, epsilons, knns, pers, key_vars_file, class_col_fi
         process_files_in_folder(timing_folder, dataset_folder)
 
         
-def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, majority, final_folder_name=None):
+def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=None):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     if final_folder_name is None:
@@ -332,10 +332,10 @@ def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, 
             dataset_name = dataset_name_match.group(1)
 
             protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
-            class_column = get_class_column(dataset_name, class_col_file)
+            class_column = get_class_column(dataset_name, "class_attribute.csv")
             key_vars = get_key_vars(file_name, "key_vars.csv")
             binary_columns, binary_percentages = binary_columns_percentage(file_path, class_column)
-
+            print(f"binary_columns = {binary_columns}")
             for protected_attribute in protected_attribute_list:
                 if protected_attribute not in data.columns:
                     raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
@@ -345,7 +345,9 @@ def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, 
 
                 for ix, qi in enumerate(key_vars):
                     start_time = time.time()
+
                     smote_v3(data, dataset_name, final_output_folder, epsilon, class_column, protected_attribute, qi, ix, binary_columns, binary_percentages, 0.3, majority)
+                    
                     end_time = time.time()
                     elapsed_time = end_time - start_time
                     print(f"Processing time: {elapsed_time} seconds\n")
@@ -371,7 +373,7 @@ def method_3(input_folder, epsilons, knns, pers, key_vars_file, class_col_file, 
 
         
 input_folder_name = "others"
-final_folder_name = "others_test"
+final_folder_name = "others_test_binary"
 method_number = "3"
 
 # ------- SMOTE --------
@@ -379,8 +381,9 @@ method_number = "3"
 #method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 #method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
-method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv", majority=True, final_folder_name=final_folder_name)
+method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
 
+'''
 # ------- METRICS --------
 process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "priv")
 process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
@@ -394,4 +397,4 @@ for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)
 
 plot_feature_across_files(folder_path_linkability, "value")
-
+'''

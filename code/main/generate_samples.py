@@ -261,28 +261,36 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, 
 
         new_candidate = []
         for key, value in parent_candidate.items():
+            #print(f"\nKey: {key}, Value: {value}")
             col_index = df.columns.get_loc(key)
             # Preserve original value if 'replace' is True and this is a protected or class column
+            if key == 'single_out':
+                continue
             if replace and key in [protected_column, class_column]:
+                #print("went into option: PROTECTED OR CLASS")
                 new_candidate.append(value)
                 continue
 
             if binary_columns and col_index in binary_columns:
                 # --- Custom rule for binary columns ---
+                #print("went into option: BINARY (CUSTOM RULE)")
                 rand_val = np.random.rand()
                 threshold = binary_columns_percentage.get(key, 0.5)  # Use 0.5 as fallback if key not present
                 new_candidate.append(1 if rand_val <= threshold else 0)
                 continue                
 
             if isinstance(parent_candidate[key], bool):
+                #print("went into option: BOOLEAN")
                 new_candidate.append(parent_candidate[key] if cr < random.random() else not parent_candidate[key])
             elif isinstance(parent_candidate[key], str):
+                #print("went into option: STRING")
                 new_candidate.append(random.choice([
                     parent_candidate[key],
                     child_candidate_1[key],
                     child_candidate_2[key]
                 ]))
             elif isinstance(parent_candidate[key], list):
+                #print("went into option: LIST")
                 temp_lst = []
                 for i in range(len(parent_candidate[key])):
                     temp_lst.append(
@@ -291,6 +299,7 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, 
                     )
                 new_candidate.append(temp_lst)
             else:
+                #print("went into option: NUMERIC")
                 noise = np.multiply(
                     child_candidate_1[key] - child_candidate_2[key],
                     np.random.laplace(0, 1 / epsilon)
