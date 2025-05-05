@@ -372,7 +372,7 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
 
        
 input_folder_name = "fair"
-final_folder_name = "fair_new"
+final_folder_name = "new_fair"
 method_number = "3"
 
 # ------- SMOTE --------

@@ -10,8 +10,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from main.pipeline_helper import process_protected_attributes, check_protected_attribute, get_class_column, get_key_vars, binary_columns_percentage
 
 
-
-
 def smote_v1(version, input_folder, output_folder, class_col_file):
     timing_results = []
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
@@ -160,7 +158,6 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
 def smote_v3(data, dataset_name, output_folder, epsilon, class_column, protected_attribute, qi, qi_index, binary_columns, binary_percentages, augmentation_rate, majority):
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
-    #smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column, qi, binary_columns, binary_percentages, 5, augmentation_rate, majority)
     smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, binary_columns, binary_percentages, 5, augmentation_rate, majority)
 
     # Save the processed file with "_[epsilon]" and "_QI[qi]" added to the filename

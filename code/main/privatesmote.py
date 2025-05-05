@@ -60,7 +60,6 @@ class PrivateSMOTE:
         self.x = ()
 
         # Target variable values
-        target_column_name = self.samples.columns[-1]
         self.y = np.array(self.samples.loc[:, self.samples.columns[-1]])
 
         # Create CuPy vector with bool values, where true corresponds to object dtype

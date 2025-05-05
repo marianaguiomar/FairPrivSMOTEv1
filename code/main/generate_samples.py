@@ -774,21 +774,22 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, bin
       # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
-    # Print number of single-outs
-    #num_single_outs = (dataset['single_out'] == 1).sum()
-    #print(f"Key_vars: {key_vars}, Number of single-outs: {num_single_outs}")
 
     # --- Step 2: Count class + protected attribute combinations ---
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
     majority_class = max(category_counts, key=category_counts.get)
     maximum_count = category_counts[majority_class]
+    reduced_maximum_count = int(maximum_count * augmentation_rate)  
     print(f"Category counts: {category_counts}")
+    print(f"Reduced maximum count: {reduced_maximum_count}")
 
     # --- Step 3: Get minority classes and how many samples to add ---
     minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
     samples_to_increase = {
-        class_tuple: maximum_count - count for class_tuple, count in minority_classes.items()
+    class_tuple: max(reduced_maximum_count - count, 0) 
+        for class_tuple, count in minority_classes.items()
     }
+    print(f"Samples to increase: {samples_to_increase}")
 
     # --- Step 4: Split majority and minority class data ---
     df_majority = dataset[
@@ -813,10 +814,11 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, bin
     if 'single_out' in df_majority.columns:
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
-        #print(f"Number of single-outs in majority class: {len(df_majority_single_out)}")
         if len(df_majority_single_out) >= 3:
             replaced_majority = apply_private_smote(df_majority_single_out.drop(columns=['single_out']), epsilon, len(df_majority_single_out), replace=True)
             df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
+        else:
+            print("not enough on 5")
 
     # --- Step 6: Handle minority classes ---
     generated_data = []
@@ -824,10 +826,8 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, bin
 
     for class_tuple, df_subset in df_minority.items():
         print(f"class_tuple: {class_tuple}")
-        num_samples = samples_to_increase[class_tuple]
         df_single_out = df_subset[df_subset['single_out'] == 1]
         df_non_single_out = df_subset[df_subset['single_out'] != 1]
-        #print(f"Number of single-outs in {class_tuple}: {len(df_single_out)}")
 
         # --- Step 6a: Replace single-outs if any ---
         if len(df_single_out)>=3:
@@ -836,18 +836,20 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, bin
             generated_data.append(replaced)
         else:
             # If no single-outs, retain full original data
+            print("not enough on 6a")
             cleaned_minority_data.append(df_subset)
 
         # --- Step 6b: Augment from full minority subset (before replacement) ---
         #base_for_augment = df_subset.select_dtypes(include=[np.number])
-        #print(f"Base for augmentation: {len(base_for_augment)} rows")
         if majority: 
-            num_samples = int(samples_to_increase[class_tuple] * augmentation_rate)
+            num_samples = samples_to_increase[class_tuple]
         else:
             num_samples = int(len(df_subset) * augmentation_rate)
         if not df_single_out.empty and len(df_single_out) >= 3 and num_samples > 0:
             augmented = apply_private_smote(df_single_out.drop(columns=['single_out']), epsilon, num_samples, replace=False)
             generated_data.append(augmented)
+        else:
+            print("not enough on 6b")
         print("\n")
     
 
