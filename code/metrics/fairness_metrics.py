@@ -18,7 +18,7 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
     clf.fit(x_train, y_train)
     y_pred = clf.predict(x_test)
 
-    print(np.unique(y_pred, return_counts=True))
+    #print(np.unique(y_pred, return_counts=True))
 
     TN, FP, FN, TP = confusion_matrix(y_test, y_pred).ravel()
     #print(f"confusion matrix -> TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
@@ -64,25 +64,6 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
                                                        (test_df_copy['current_pred_' + biased_col] == 1) &
                                                        (test_df_copy[biased_col] == 0), 1, 0)
     
-    '''
-    count = ((test_df_copy[target_col] == 1) &
-         (test_df_copy['current_pred_' + biased_col] == 0) &
-         (test_df_copy[biased_col] == 0)).sum()
-    print(count)
-
-    count = ((test_df_copy['class'] == 1) &
-         (test_df_copy['current_pred_V5'] == 0) &
-         (test_df_copy['V5'] == 0)).sum()
-    print(count)
-
-    print(f"target_col: {target_col}")
-    count1 = (test_df_copy[target_col] == 1).sum()
-    count2 = (test_df_copy['class'] == 1).sum()
-    print(count1)
-    print(count2)
-    
-    test_df_copy.to_csv('combined_test/other/test_df_copy_after.csv', index=False)
-    '''
 
     a = test_df_copy['TP_' + biased_col + "_1"].sum() 
     b = test_df_copy['TN_' + biased_col + "_1"].sum() 
@@ -92,18 +73,6 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
     f = test_df_copy['TN_' + biased_col + "_0"].sum()
     g = test_df_copy['FN_' + biased_col + "_0"].sum()
     h = test_df_copy['FP_' + biased_col + "_0"].sum()
-
-    #print(test_df_copy[[target_col, 'current_pred_' + biased_col, biased_col]].value_counts())
-
-    #print(f"a: {a}, b: {b}, c: {c}, d: {d}, e: {e}, f: {f}, g: {g}, h: {h}")
-
-    #print(x_test.shape[0])
-    #print(a+b+c+d+e+f+g+h)
-    #print("...")
-    #print(y_train.value_counts())  # Check class distribution in training set
-    #print(y_test.value_counts())   # Check class distribution in test set
-
-
 
     if metric == 'aod':
         return calculate_average_odds_difference(a, b, c, d, e, f, g, h)

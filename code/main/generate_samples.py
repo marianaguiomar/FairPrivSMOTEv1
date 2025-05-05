@@ -12,6 +12,8 @@ import itertools
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'cleanup')))
 from helpers.clean import unpack_value, standardize_binary
+from main.privatesmote import apply_private_smote
+from sklearn.preprocessing import LabelEncoder
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -264,9 +266,7 @@ def generate_samples_fully_replaced(no_of_samples, df, epsilon, binary_columns, 
             #print(f"\nKey: {key}, Value: {value}")
             col_index = df.columns.get_loc(key)
             # Preserve original value if 'replace' is True and this is a protected or class column
-            if key == 'single_out':
-                continue
-            if replace and key in [protected_column, class_column]:
+            if replace and key in [protected_column, class_column, "single_out"]:
                 #print("went into option: PROTECTED OR CLASS")
                 new_candidate.append(value)
                 continue
@@ -770,12 +770,106 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
 
     return cleaned_final_df
 
-'''
-dt_path = "data_private/13.csv"
-data = pd.read_csv(dt_path)
-protected_attribute = label_imbalance(data)[0]
-#print (protected_attribute)
-smote_df = apply_fairsmote(data, protected_attribute)
+def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, binary_columns, binary_columns_percentage, k, augmentation_rate, majority=False):
+      # --- Step 1: Flag 'single_out' rows using k-anonymity ---
+    kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
+    dataset['single_out'] = np.where(kgrp < k, 1, 0)
+    # Print number of single-outs
+    #num_single_outs = (dataset['single_out'] == 1).sum()
+    #print(f"Key_vars: {key_vars}, Number of single-outs: {num_single_outs}")
 
-print(smote_df.shape)
-'''
+    # --- Step 2: Count class + protected attribute combinations ---
+    category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
+    majority_class = max(category_counts, key=category_counts.get)
+    maximum_count = category_counts[majority_class]
+    print(f"Category counts: {category_counts}")
+
+    # --- Step 3: Get minority classes and how many samples to add ---
+    minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
+    samples_to_increase = {
+        class_tuple: maximum_count - count for class_tuple, count in minority_classes.items()
+    }
+
+    # --- Step 4: Split majority and minority class data ---
+    df_majority = dataset[
+        (dataset[class_column] == majority_class[0]) & 
+        (dataset[protected_attribute] == majority_class[1])
+    ]
+    df_minority = {
+        class_tuple: dataset[
+            (dataset[class_column] == class_tuple[0]) & 
+            (dataset[protected_attribute] == class_tuple[1])
+        ] for class_tuple in minority_classes
+    }
+
+    # Convert categorical columns to string if necessary
+    for col in [protected_attribute, class_column]:
+        if dataset[col].dtype == 'O':  # Object type means it's categorical
+            df_majority[col] = df_majority[col].astype(str)
+            for class_tuple in df_minority:
+                df_minority[class_tuple][col] = df_minority[class_tuple][col].astype(str)
+
+    # --- Step 5: Replace single-outs in majority class ---
+    if 'single_out' in df_majority.columns:
+        df_majority_single_out = df_majority[df_majority['single_out'] == 1]
+        df_majority_remaining = df_majority[df_majority['single_out'] != 1]
+        #print(f"Number of single-outs in majority class: {len(df_majority_single_out)}")
+        if len(df_majority_single_out) >= 3:
+            replaced_majority = apply_private_smote(df_majority_single_out.drop(columns=['single_out']), epsilon, len(df_majority_single_out), replace=True)
+            df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
+
+    # --- Step 6: Handle minority classes ---
+    generated_data = []
+    cleaned_minority_data = []
+
+    for class_tuple, df_subset in df_minority.items():
+        print(f"class_tuple: {class_tuple}")
+        num_samples = samples_to_increase[class_tuple]
+        df_single_out = df_subset[df_subset['single_out'] == 1]
+        df_non_single_out = df_subset[df_subset['single_out'] != 1]
+        #print(f"Number of single-outs in {class_tuple}: {len(df_single_out)}")
+
+        # --- Step 6a: Replace single-outs if any ---
+        if len(df_single_out)>=3:
+            replaced = apply_private_smote(df_single_out.drop(columns=['single_out']), epsilon, len(df_single_out), replace=True)
+            cleaned_minority_data.append(df_non_single_out)
+            generated_data.append(replaced)
+        else:
+            # If no single-outs, retain full original data
+            cleaned_minority_data.append(df_subset)
+
+        # --- Step 6b: Augment from full minority subset (before replacement) ---
+        #base_for_augment = df_subset.select_dtypes(include=[np.number])
+        #print(f"Base for augmentation: {len(base_for_augment)} rows")
+        if majority: 
+            num_samples = int(samples_to_increase[class_tuple] * augmentation_rate)
+        else:
+            num_samples = int(len(df_subset) * augmentation_rate)
+        if not df_single_out.empty and len(df_single_out) >= 3 and num_samples > 0:
+            augmented = apply_private_smote(df_single_out.drop(columns=['single_out']), epsilon, num_samples, replace=False)
+            generated_data.append(augmented)
+        print("\n")
+    
+
+    # --- Step 7: Final dataset assembly ---
+    final_df = pd.concat(
+        [df_majority] + cleaned_minority_data + generated_data,
+        ignore_index=True
+    )
+
+    # --- Step 8: Drop 'single_out' and clean final data ---
+    if 'single_out' in final_df.columns:
+        final_df = final_df.drop(columns=['single_out'])
+
+    print("\nFinal subclass sizes:")
+    for class_tuple in df_minority:
+        final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
+                                (final_df[protected_attribute] == class_tuple[1])])
+        print(f"  - {class_tuple}: {final_count}")
+    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
+
+    cleaned_final_df = final_df.applymap(unpack_value)
+    cleaned_final_df = cleaned_final_df.applymap(standardize_binary)
+
+    return cleaned_final_df
+

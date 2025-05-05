@@ -125,7 +125,7 @@ def get_class_column(file_name, class_column_file):
     return class_column_dict[file_key]
 
 def check_protected_attribute(data, class_column, protected_attribute, singleouts=False):
-    print(f"class col: {class_column}, protected_attribute: {protected_attribute}")
+    #print(f"class col: {class_column}, protected_attribute: {protected_attribute}")
     # Check if the column contains only 1s and 0s and has at least one of each
     if not set(data[protected_attribute].dropna()) <= {0, 1}:
         print(f"Protected attribute '{protected_attribute}' column does not contain only 1s and 0s.")

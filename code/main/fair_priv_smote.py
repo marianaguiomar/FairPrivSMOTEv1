@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import sys
-from generate_samples import apply_fairsmote, apply_fairsmote_singleouts, apply_new, apply_new_replaced, apply_fully_replaced
+from generate_samples import apply_fairsmote, apply_fairsmote_singleouts, apply_new, apply_new_replaced, apply_fully_replaced, new_apply
 import re
 import time
 
@@ -160,9 +160,10 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
 def smote_v3(data, dataset_name, output_folder, epsilon, class_column, protected_attribute, qi, qi_index, binary_columns, binary_percentages, augmentation_rate, majority):
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
-    smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column, qi, binary_columns, binary_percentages, 5, augmentation_rate, majority)
+    #smote_df = apply_fully_replaced(data, protected_attribute, epsilon, class_column, qi, binary_columns, binary_percentages, 5, augmentation_rate, majority)
+    smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, binary_columns, binary_percentages, 5, augmentation_rate, majority)
 
-    # Save the processed file with "_[epsilon]" added to the filename
+    # Save the processed file with "_[epsilon]" and "_QI[qi]" added to the filename
     output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}_QI{qi_index}.csv")
     smote_df.to_csv(output_path, index=False)
     print(f"Saved processed file: {output_path}\n")

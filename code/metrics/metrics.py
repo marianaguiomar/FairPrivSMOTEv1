@@ -44,6 +44,8 @@ def run_linkability(folder_path, dir, og = False):
         print(f"orig file: {orig_file}")
         print(f"transf file: {transf_file}")
 
+        print(f"key_vars: {key_vars[nqi]}")
+
         
         value, ci = linkability(orig_file, transf_file, orig_file, key_vars[nqi], nqi)
         results.append({"file":file, "value": value, "ci": ci})
@@ -142,11 +144,15 @@ def process_linkability(input_folder, ds_type, output_file = "results_metrics/li
     
     # Process each file and append results
     for file_path in file_paths:
+        # Derive folder name from the individual file path
+        folder_name = os.path.basename(file_path).replace('.csv', '')
+
         # Call the function to calculate stats for each file
         result = average_linkability(input_folder, file_path, std)  # Pass the file as a list
         
         # Append the result to the list
         if result:
+            result["folder_name"] = folder_name
             all_results.append(result)
 
     # Determine the fieldnames based on whether 'std' is True or False

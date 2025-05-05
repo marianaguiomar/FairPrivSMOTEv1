@@ -335,7 +335,6 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
             class_column = get_class_column(dataset_name, "class_attribute.csv")
             key_vars = get_key_vars(file_name, "key_vars.csv")
             binary_columns, binary_percentages = binary_columns_percentage(file_path, class_column)
-            print(f"binary_columns = {binary_columns}")
             for protected_attribute in protected_attribute_list:
                 if protected_attribute not in data.columns:
                     raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
@@ -371,24 +370,22 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
         process_files_in_folder(timing_folder, input_folder)
 
 
-        
-input_folder_name = "others"
-final_folder_name = "others_test_binary"
+       
+input_folder_name = "fair"
+final_folder_name = "fair_new"
 method_number = "3"
 
 # ------- SMOTE --------
-#method_1_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
-#method_1_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
-#method_2_a(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
-#method_2_b(args.input_folder, args.epsilon, args.knn, args.per, "key_vars.csv", "class_attribute.csv")
 method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
 
-'''
+
 # ------- METRICS --------
-process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "priv")
+process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "fair")
 process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
         
+'''
 # ------- PLOTTING --------
+'''
 folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number}"  # Replace with your actual folder path
 folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
 
@@ -397,4 +394,3 @@ for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)
 
 plot_feature_across_files(folder_path_linkability, "value")
-'''
