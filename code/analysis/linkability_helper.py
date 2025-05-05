@@ -1,8 +1,11 @@
 import os
 import pandas as pd
 import re
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.pipeline_helper import get_key_vars, get_class_column, process_protected_attributes
 import warnings
+
 
 def get_ds_and_qi(file, og):
     if og:
@@ -134,7 +137,7 @@ def process_folder_singleouts(folder_path, k=5):
         file_path = os.path.join(folder_path, file)
         
         # Infer dataset name and number of QIs
-        ds_match = re.match(r'^(.*?).csv', file)
+        ds_match = re.match(r'^(.*?)_', file)
         ds = ds_match.group(1) if ds_match else None
         key_vars = get_key_vars(ds, "key_vars.csv")
 
@@ -147,4 +150,4 @@ def process_folder_singleouts(folder_path, k=5):
                 print_singleouts_info(file_path, class_column, protected_column[j], key_vars[i], k)
 
                 
-process_folder_singleouts("datasets/inputs/fair30")
+process_folder_singleouts("datasets/outputs/outputs_3/priv_funkier_single_outs")

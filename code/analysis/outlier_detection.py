@@ -95,44 +95,61 @@ def detect_outliers_in_folder(folder_path, key_vars_csv, output_csv):
     results_df.to_csv(output_csv, index=False)
     print(f"\n✅ Outlier detection completed. Results saved to {output_csv}")
 
-def summarize_linkability(input_folder, output_folder):
+import os
+import pandas as pd
+import numpy as np
+import re
+from collections import defaultdict
+
+def summarize_linkability(input_file, output_folder):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
     # Store data by dataset
     datasets = defaultdict(list)
 
-    # Regex pattern to extract dataset, epsilon, QI
+    # Regex pattern to extract dataset, epsilon, QI from the filename
     pattern = re.compile(r"([a-zA-Z0-9]+)_(\d+\.?\d*)-.*_QI(\d+)")
 
-    # Read all files
-    for file in os.listdir(input_folder):
-        if file.endswith(".csv"):
-            match = pattern.match(file)
-            if not match:
-                print(f"⚠️ Could not parse filename: {file}")
-                continue
+    # Read the single CSV file
+    try:
+        df = pd.read_csv(input_file)
+        if "file" not in df.columns or "value" not in df.columns or "ci" not in df.columns:
+            print(f"⚠️ Missing required columns in {input_file}")
+            return
+    except Exception as e:
+        print(f"⚠️ Could not read {input_file}: {e}")
+        return
 
-            dataset, epsilon, qi = match.groups()
-            epsilon = float(epsilon)
-            qi = int(qi)
+    # Process each row in the dataframe
+    for _, row in df.iterrows():
+        file_name = row["file"]
+        match = pattern.match(file_name)
 
-            file_path = os.path.join(input_folder, file)
+        if not match:
+            print(f"⚠️ Could not parse filename: {file_name}")
+            continue
 
-            try:
-                df = pd.read_csv(file_path)
-                if "value" not in df.columns:
-                    print(f"⚠️ No 'value' column found in {file}")
-                    continue
+        dataset, epsilon, qi = match.groups()
+        epsilon = float(epsilon)
+        qi = int(qi)
 
-                avg_linkability = np.mean(df["value"].astype(np.float64))
-                datasets[dataset].append({"epsilon": epsilon, "qi": qi, "linkability": avg_linkability})
+        # Extract value and confidence interval
+        value = row["value"]
+        ci_values = row["ci"]
+        try:
+            # Parse the confidence interval
+            ci_tuple = eval(ci_values)  # Convert string to tuple (min, max)
+            ci_lower = ci_tuple[0]
+            ci_upper = ci_tuple[1]
+        except (ValueError, SyntaxError):
+            print(f"⚠️ Could not parse CI for {file_name}")
+            continue
 
-            except Exception as e:
-                print(f"⚠️ Could not read {file_path}: {e}")
-                continue
+        # Append results to the dataset list
+        datasets[dataset].append({"epsilon": epsilon, "qi": qi, "linkability": value, "ci_lower": ci_lower, "ci_upper": ci_upper})
 
-    # Process each dataset
+    # Process each dataset and save summaries
     for dataset, records in datasets.items():
         df = pd.DataFrame(records)
 
@@ -159,6 +176,7 @@ def summarize_linkability(input_folder, output_folder):
 
 
 
+'''
 detect_outliers_in_folder(folder_path="datasets/inputs/priv",
     key_vars_csv="key_vars.csv",
     output_csv="results_metrics/others/outlier_study/outliers_priv.csv"
@@ -166,6 +184,6 @@ detect_outliers_in_folder(folder_path="datasets/inputs/priv",
 '''
 
 summarize_linkability(
-    input_folder="results_metrics/linkability_results/outputs_3/priv30",
+    input_file="results_metrics/linkability_results/outputs_3/priv_funkier_single_outs.csv",
     output_folder="results_metrics/others/outlier_study/linkability_summaries"
-)'''
+)
