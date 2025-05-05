@@ -770,7 +770,7 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
 
     return cleaned_final_df
 
-def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, binary_columns, binary_columns_percentage, k, augmentation_rate, majority=False):
+def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k=5, majority=False):
       # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
@@ -781,7 +781,6 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, bin
     maximum_count = category_counts[majority_class]
     reduced_maximum_count = int(maximum_count * augmentation_rate)  
     print(f"Category counts: {category_counts}")
-    print(f"Reduced maximum count: {reduced_maximum_count}")
 
     # --- Step 3: Get minority classes and how many samples to add ---
     minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
@@ -789,7 +788,6 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, bin
     class_tuple: max(reduced_maximum_count - count, 0) 
         for class_tuple, count in minority_classes.items()
     }
-    print(f"Samples to increase: {samples_to_increase}")
 
     # --- Step 4: Split majority and minority class data ---
     df_majority = dataset[
