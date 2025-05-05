@@ -334,7 +334,6 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
             protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
             class_column = get_class_column(dataset_name, "class_attribute.csv")
             key_vars = get_key_vars(file_name, "key_vars.csv")
-            binary_columns, binary_percentages = binary_columns_percentage(file_path, class_column)
             for protected_attribute in protected_attribute_list:
                 if protected_attribute not in data.columns:
                     raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
@@ -345,7 +344,7 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
                 for ix, qi in enumerate(key_vars):
                     start_time = time.time()
 
-                    smote_v3(data, dataset_name, final_output_folder, epsilon, class_column, protected_attribute, qi, ix, binary_columns, binary_percentages, 0.3, majority)
+                    smote_v3(data, dataset_name, final_output_folder, epsilon, class_column, protected_attribute, qi, ix, 0.3, majority)
                     
                     end_time = time.time()
                     elapsed_time = end_time - start_time
