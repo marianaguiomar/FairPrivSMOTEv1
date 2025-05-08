@@ -69,7 +69,7 @@ def linkability(orig_file, transf_file, control_file, key_vars, nqi_number):
 
     evaluator = LinkabilityEvaluator(ori=data,
                                     syn=transf_data,
-                                    #control=control_data,
+                                    control=control_data,
                                     n_attacks=len(control_data),
                                     aux_cols=key_vars, 
                                     n_neighbors=10)

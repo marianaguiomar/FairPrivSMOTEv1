@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import os
+from sklearn.model_selection import train_test_split
 
 def arff_to_csv(arff_file: str, csv_file: str):
     """
@@ -535,4 +537,31 @@ def process_56():
     print(f"Processed file saved: {output_path}")
 
 
-process_13()
+def split_datasets(base_path='datasets/inputs/fair', test_size=0.3, random_state=42):
+    # Define paths
+    input_dir = base_path
+    train_dir = os.path.join(base_path, 'train')
+    test_dir = os.path.join(base_path, 'test')
+
+    # Create output directories if they don't exist
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
+
+    # List CSV files in the input directory (ignoring train/test subfolders if re-run)
+    for filename in os.listdir(input_dir):
+        file_path = os.path.join(input_dir, filename)
+        if filename.endswith('.csv') and os.path.isfile(file_path):
+            print(f"Processing {filename}...")
+            df = pd.read_csv(file_path)
+
+            # Split dataset
+            train_df, test_df = train_test_split(df, test_size=test_size, random_state=random_state)
+
+            # Save to corresponding folders
+            base_filename = os.path.splitext(filename)[0]
+            train_df.to_csv(os.path.join(train_dir, f"{base_filename}.csv"), index=False)
+            test_df.to_csv(os.path.join(test_dir, f"{base_filename}.csv"), index=False)
+
+    print("Dataset splitting complete.")
+
+split_datasets("datasets/inputs/fair")

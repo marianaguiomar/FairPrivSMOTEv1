@@ -37,17 +37,19 @@ def run_linkability(folder_path, dir, og = False):
         nqi = int(nqi_match.group(1)) if nqi_match else 0
 
         key_vars = get_key_vars(ds, "key_vars.csv")
-        orig_file = f"datasets/inputs/{dir}/{ds}.csv"
 
+        orig_file = f"datasets/inputs/{dir}/train/{ds}.csv"
         transf_file = os.path.join(folder_path, file)
+        control_file = f"datasets/inputs/{dir}/test/{ds}.csv"
 
         print(f"orig file: {orig_file}")
         print(f"transf file: {transf_file}")
+        print(f"control file: {control_file}")
 
         print(f"key_vars: {key_vars[nqi]}")
 
         
-        value, ci = linkability(orig_file, transf_file, orig_file, key_vars[nqi], nqi)
+        value, ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
         results.append({"file":file, "value": value, "ci": ci})
 
     df = pd.DataFrame(results)

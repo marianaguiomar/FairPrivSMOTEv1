@@ -320,12 +320,19 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
+    # check for train/test split. if it doesnt exist, create it
+    train_dir = os.path.join(input_folder, "train")
+    test_dir = os.path.join(input_folder, "test")
+    if not (os.path.exists(train_dir) and os.path.exists(test_dir)):
+        print("Train/Test folders not found. Running split_datasets()...")
+        split_datasets(input_folder)
+
     timing_results = []
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for epsilon in epsilons:
-        for file_name in os.listdir(input_folder):
-            file_path = os.path.join(input_folder, file_name)
+        for file_name in os.listdir(train_dir):
+            file_path = os.path.join(train_dir, file_name)
             data = pd.read_csv(file_path)
 
             dataset_name_match = re.match(r'^(.*?).csv', file_name)
