@@ -370,17 +370,17 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
 
 
        
-input_folder_name = "fair"
-final_folder_name = "new_fair"
+input_folder_name = "others"
+final_folder_name = "kdd"
 method_number = "3"
 
 # ------- SMOTE --------
-method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
+#method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
 
 
 # ------- METRICS --------
-process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "fair")
-process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
+#process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "fair")
+#process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
         
 '''
 # ------- PLOTTING --------
@@ -389,7 +389,14 @@ folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number
 folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
 
 features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
+#for feature_name in features_fairness:
+    #plot_feature_across_files(folder_path_fairness, feature_name)
+
+
+
+folder_path_fairness = f"results_metrics/fairness_results/to_plot"  # Replace with your actual folder path
+folder_path_linkability = f"results_metrics/linkability_results/to_plot"  # Replace with your actual folder path
+features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)
-
 plot_feature_across_files(folder_path_linkability, "value")
