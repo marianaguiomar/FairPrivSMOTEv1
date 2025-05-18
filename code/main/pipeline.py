@@ -6,7 +6,6 @@ import pandas as pd
 import sys
 import json
 import re
-
 from pipeline_helper import get_key_vars, binary_columns_percentage, get_class_column, process_protected_attributes, print_class_combinations, check_protected_attribute
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -14,6 +13,8 @@ from main.fair_priv_smote import smote_v1, smote_v2, smote_v3
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 from metrics.metrics import process_linkability, process_fairness
 from metrics.plots import plot_feature_across_files
+from others.prep_datasets import split_datasets
+
 
 # ------------ DEFAULT VALUES ------------
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
@@ -375,35 +376,105 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
 
         process_files_in_folder(timing_folder, input_folder)
 
+def run_original_privsmote(input_folder, epsilons, final_folder_name):
+    # creating output folder
+    input_folder_name = os.path.basename(os.path.normpath(input_folder))
+    final_output_folder = f"datasets/outputs/outputs_3/{final_folder_name}"
+    if not os.path.exists(final_output_folder):
+        os.makedirs(final_output_folder)
+
+    # check for train/test split. if it doesnt exist, create it
+    train_dir = os.path.join(input_folder, "train")
+    test_dir = os.path.join(input_folder, "test")
+    if not (os.path.exists(train_dir) and os.path.exists(test_dir)):
+        print("Train/Test folders not found. Running split_datasets()...")
+        split_datasets(input_folder)
+
+
+    ######################## APPLY ORIGINAL SMOTE ################################
+    for epsilon in epsilons:
+        for file_name in os.listdir(train_dir):
+            file_path = os.path.join(train_dir, file_name)
+            data = pd.read_csv(file_path)
+
+            dataset_name_match = re.match(r'^(.*?).csv', file_name)
+            dataset_name = dataset_name_match.group(1)
+
+            protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
+            class_column = get_class_column(dataset_name, "class_attribute.csv")
+            key_vars = get_key_vars(file_name, "key_vars.csv")
+
+            for i in range(len(key_vars)):
+                # Define the arguments
+                args = [
+                    "python", "code/main/privatesmote_old.py",
+                    "--input_file", file_path,
+                    "--knn", "1",
+                    "--per", "3",
+                    "--epsilon", str(epsilon),
+                    "--k", "5",
+                    "--key_vars", *key_vars[i],  # each variable separated
+                    "--output_folder", final_output_folder,
+                    "--nqi", str(i)
+                ]
+
+                # Run the subprocess
+                try:
+                    result = subprocess.run(args, check=True, capture_output=True, text=True)
+                    print("Output:\n", result.stdout)
+                    print("Errors:\n", result.stderr)
+                except subprocess.CalledProcessError as e:
+                    print("An error occurred:")
+                    print(e.stderr)
+
+        
 
        
-input_folder_name = "others"
-final_folder_name = "kdd"
+input_folder_name = "priv"
+final_folder_name = "priv_k3_knn3"
 method_number = "3"
 
 # ------- SMOTE --------
-#method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
+method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
 
 
 # ------- METRICS --------
-#process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "fair")
-#process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
+process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "priv")
+process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
         
-'''
+input_folder_name = "fair"
+final_folder_name = "fair_k3_knn3"
+method_number = "3"
+
+method_3(f"datasets/inputs/{input_folder_name}", args.epsilon, args.knn, args.per, majority=True, final_folder_name=final_folder_name)
+
+
+# ------- METRICS --------
+process_linkability(f"datasets/outputs/outputs_{method_number}/{final_folder_name}", "fair")
+process_fairness(f"datasets/outputs/outputs_{method_number}/{final_folder_name}")
+        
+        
+
+
+
 # ------- PLOTTING --------
-'''
+
+
 folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number}"  # Replace with your actual folder path
 folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
 
 features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
-#for feature_name in features_fairness:
-    #plot_feature_across_files(folder_path_fairness, feature_name)
+features_linkability = ['value']
+for feature_name in features_linkability:
+    #plot_feature_across_files("results_metrics/linkability_results/to_plot", feature_name)
+    print("")
 
 
-
+'''
 folder_path_fairness = f"results_metrics/fairness_results/to_plot"  # Replace with your actual folder path
 folder_path_linkability = f"results_metrics/linkability_results/to_plot"  # Replace with your actual folder path
 features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)
 plot_feature_across_files(folder_path_linkability, "value")
+'''

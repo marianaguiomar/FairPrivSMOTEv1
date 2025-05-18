@@ -770,7 +770,7 @@ def apply_fully_replaced(dataset, protected_attribute, epsilon, class_column, ke
 
     return cleaned_final_df
 
-def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k=5, majority=False):
+def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k=3, majority=False):
       # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)

@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import argparse
+import os
 
 
 def keep_numbers(df):
@@ -264,6 +265,9 @@ if __name__ == "__main__":
                         help='Group size for k-anonymity')
     parser.add_argument('--key_vars', nargs='+', default=[],
                         required=True, help='Quasi-Identifiers')
+    parser.add_argument('--output_folder', type=str, default="none",)
+    parser.add_argument('--nqi', type=int, default=0,
+                        help='Number of quasi-identifiers')
     args = parser.parse_args()
 
     # Read data
@@ -290,6 +294,14 @@ if __name__ == "__main__":
     # Check and adjust data types and trailing values
     newDf = check_and_adjust_data_types(data, newDf)
 
+        # Ensure output folder exists
+    os.makedirs(args.output_folder, exist_ok=True)
+
+    # Create the file name as before
+    file_name = f'{args.input_file.split(".csv")[0]}_{args.epsilon}-privateSMOTE_QI{args.nqi}_knn{args.knn}_per{args.per}.csv'
+
+    # Full path with output folder
+    full_path = os.path.join(args.output_folder, file_name)
+
     # Save synthetic data
-    newDf.to_csv(
-        f'synth_data{sep}{args.input_file.split(".csv")[0]}_{args.epsilon}-privateSMOTE_QI0_knn{args.knn}_per{args.per}.csv', index=False)
+    newDf.to_csv(full_path, index=False)

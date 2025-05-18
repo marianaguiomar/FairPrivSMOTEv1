@@ -158,7 +158,7 @@ def smote_v2(version, input_folder, output_folder, epsilon, timing_results, clas
 def smote_v3(data, dataset_name, output_folder, epsilon, class_column, protected_attribute, qi, qi_index, augmentation_rate, majority):
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
-    smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, augmentation_rate, k=5, majority=majority)
+    smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, augmentation_rate, k=3, majority=majority)
 
     # Save the processed file with "_[epsilon]" and "_QI[qi]" added to the filename
     output_path = os.path.join(output_folder, f"{dataset_name}_{epsilon}-privateSMOTE_{protected_attribute}_QI{qi_index}.csv")
