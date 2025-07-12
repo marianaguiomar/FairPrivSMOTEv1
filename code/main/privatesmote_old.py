@@ -39,10 +39,10 @@ def check_and_adjust_data_types(orig_df, new_df):
 class PrivateSMOTE:
     """Apply PrivateSMOTE"""
 
-    def __init__(self, samples, N, knn, epsilon, k, key_vars):
+    def __init__(self, samples, knn, epsilon, k, key_vars, single_out_column):
         """Initiate arguments"""
         self.samples = samples.reset_index(drop=True)
-        self.N = int(N)
+        self.N = 1
         self.knn = knn
         self.epsilon = epsilon
         self.k = k
@@ -59,6 +59,7 @@ class PrivateSMOTE:
         self.unique_values = {}
         self.X_train_shape = ()
         self.x = ()
+        self.single_out_column = single_out_column
 
         # Target variable values
         self.y = np.array(self.samples.loc[:, self.samples.columns[-1]])
@@ -66,12 +67,25 @@ class PrivateSMOTE:
         # Create CuPy vector with bool values, where true corresponds to object dtype
         self.is_object_type = np.array(
             self.samples[self.samples.columns[:-1]].dtypes == 'object')
-
+    
+    '''
     def khighest_risk(self):
+        print(f"k = {self.k}")  # Print the value of k
         """Create highest_risk variable based on k-anonymity"""
         kgrp = self.samples.groupby(self.key_vars)[
             self.key_vars[0]].transform(len)
         self.samples['highest_risk'] = np.where(kgrp < self.k, 1, 0)
+        high_risk_count = self.samples['highest_risk'].sum()  # Count of samples marked as high risk
+        print(f"Number of high-risk samples: {high_risk_count} out of {len(self.samples)}")
+        return self.samples
+    '''
+
+    def khighest_risk(self):
+        print(f"k = {self.k}")  # Print the value of k
+        """Create highest_risk variable based on k-anonymity"""
+        self.samples['highest_risk'] = self.single_out_column.values
+        high_risk_count = self.samples['highest_risk'].sum()  # Count of samples marked as high risk
+        print(f"Number of high-risk samples: {high_risk_count} out of {len(self.samples)}")
         return self.samples
 
     def nearest_neighbours(self, df):
@@ -126,9 +140,9 @@ class PrivateSMOTE:
                 encoded_data[col_name].astype(int))
         return encoded_data
 
-    def over_sampling(self):
+    def over_sampling(self, desired_synthetic_count):
         """Find the nearest neighbors and populate with new data"""
-        N = int(self.N)
+        #N = int(self.N)
         # find highest-risk cases
         self.samples = self.khighest_risk()
         # Highest risk samples selection to be replaced
@@ -136,7 +150,7 @@ class PrivateSMOTE:
                                               == 1, self.samples.columns[:-2]].shape
         # Initialize the synthetic samples with the number of samples and attributes
         self.synthetic = np.empty(
-            shape=(self.X_train_shape[0] * N, self.X_train_shape[1] + 1), dtype='float32')
+            shape=(desired_synthetic_count, self.X_train_shape[1] + 1), dtype='float32')
         print("all sample: ", self.samples.shape)
         print("n highest risk: ", self.X_train_shape)
         self.x = self.enc_data()
@@ -153,13 +167,21 @@ class PrivateSMOTE:
         # Get the indices of observations that need oversampling
         highest_risk_indices = self.samples.loc[self.samples['highest_risk']
                                                 == 1, self.samples.columns[:-2]].index
+        
+        print(f"number of 'highest_risk': {len(highest_risk_indices)}")
+        
+        # Handle how many samples to draw
+        if desired_synthetic_count <= len(highest_risk_indices):
+            selected_indices = np.random.choice(highest_risk_indices, size=desired_synthetic_count, replace=False)
+        else:
+            selected_indices = np.random.choice(highest_risk_indices, size=desired_synthetic_count, replace=True)
+
 
         # For each observation find nearest neighbours
-        for i, _ in enumerate(self.standardized_data):
-            if i in highest_risk_indices:
-                nnarray = self.neighbors.kneighbors(self.standardized_data[i].reshape(1, -1),
-                                                    return_distance=False)[0]
-                self._populate(N, i, nnarray)
+        # Generate one synthetic sample per selected index
+        for i in selected_indices:
+            nnarray = self.neighbors.kneighbors(self.standardized_data[i].reshape(1, -1), return_distance=False)[0]
+            self._populate(1, i, nnarray)
         
         # assign highest-risk bool value
         highest_risk_col = np.ones((self.synthetic.shape[0], 1), dtype=self.synthetic.dtype)
@@ -247,6 +269,58 @@ class PrivateSMOTE:
             self.synthetic[self.newindex, synthetic_array.shape[0]] = self.y[i]
             self.newindex += 1
             N -= 1
+
+
+def apply_private_smote_new(data, epsilon, n_samples, replace, knn, k, key_vars, single_out_column):
+    """
+    This function applies PrivateSMOTE on the input data and returns the new synthetic samples.
+    
+    Args:
+    - data (str): df.
+    - knn (int): Nearest Neighbor for interpolation.
+    - per (int): Amount of new cases to replace the original.
+    - epsilon (float): Amount of noise for PrivateSMOTE.
+    - k (int): Group size for k-anonymity.
+    - key_vars (list): List of quasi-identifiers.
+    - replace (int): Whether to replace the original samples with synthetic ones.
+    - n_samples (int): Number of samples for generating new cases.
+    
+    Returns:
+    - pd.DataFrame: The new synthetic samples generated by PrivateSMOTE.
+    """
+    # Read data
+    #data = pd.read_csv(input_file)
+
+    # Encode string with numbers to numeric and remove trailing zeros
+    data = keep_numbers(data)
+
+    # --- Insert this block here ---
+    # Identify and cast binary numeric features (0.0/1.0) to object to avoid interpolation
+    for col in data.columns[:-1]:  # exclude target
+        unique_vals = data[col].dropna().unique()
+        if set(unique_vals) == {0.0, 1.0} or set(unique_vals) == {0, 1} or set(unique_vals) == {0.0, 1} or set(unique_vals) == {0, 1.0}:
+            data[col] = data[col].astype('object')  # Prevent numeric interpretation
+
+# --------------------------------
+
+    # Check if target column is object and encode if necessary
+    tgt_obj = data[data.columns[-1]].dtypes == 'object'
+    if tgt_obj:
+        target_encoder = LabelEncoder()
+        data[data.columns[-1]] = target_encoder.fit_transform(data[data.columns[-1]])
+
+    # Apply PrivateSMOTE
+    new_samples = PrivateSMOTE(data, knn, epsilon, k, key_vars, single_out_column).over_sampling(n_samples)
+
+    # Decode the target column back if it was encoded
+    if tgt_obj:
+        new_samples[new_samples.columns[-1]] = target_encoder.inverse_transform(new_samples[new_samples.columns[-1]])
+
+    # Check and adjust data types and trailing values
+    new_samples = check_and_adjust_data_types(data, new_samples)
+    
+    # Return the new synthetic samples DataFrame
+    return new_samples
 
 
 if __name__ == "__main__":

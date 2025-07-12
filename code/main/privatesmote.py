@@ -243,7 +243,7 @@ class PrivateSMOTE:
             self.newindex += 1
             N -= 1
 
-def apply_private_smote(data, epsilon, n_samples, replace, knn=3):
+def apply_private_smote_replace(data, epsilon, n_samples, replace, knn=3):
     """
     This function applies PrivateSMOTE on the input data and returns the new synthetic samples.
     

@@ -12,7 +12,8 @@ import itertools
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'cleanup')))
 from helpers.clean import unpack_value, standardize_binary
-from main.privatesmote import apply_private_smote
+from main.privatesmote import apply_private_smote_replace
+from main.privatesmote_old import apply_private_smote_new
 from sklearn.preprocessing import LabelEncoder
 
 import warnings
@@ -20,7 +21,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k=3, majority=False):
+def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, majority=True):
       # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
@@ -62,8 +63,8 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
     if 'single_out' in df_majority.columns:
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
-        if len(df_majority_single_out) >= 3:
-            replaced_majority = apply_private_smote(df_majority_single_out.drop(columns=['single_out']), epsilon, len(df_majority_single_out), replace=True)
+        if len(df_majority_single_out) >= (knn+1):
+            replaced_majority = apply_private_smote_replace(df_majority_single_out.drop(columns=['single_out']), epsilon, len(df_majority_single_out), knn, replace=True)
             df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
         else:
             print("not enough on 5")
@@ -75,11 +76,12 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
     for class_tuple, df_subset in df_minority.items():
         print(f"class_tuple: {class_tuple}")
         df_single_out = df_subset[df_subset['single_out'] == 1]
+        
         df_non_single_out = df_subset[df_subset['single_out'] != 1]
 
         # --- Step 6a: Replace single-outs if any ---
-        if len(df_single_out)>=3:
-            replaced = apply_private_smote(df_single_out.drop(columns=['single_out']), epsilon, len(df_single_out), replace=True)
+        if len(df_single_out)>= (knn+1):
+            replaced = apply_private_smote_replace(df_single_out.drop(columns=['single_out']), epsilon, len(df_single_out), replace=True)
             cleaned_minority_data.append(df_non_single_out)
             generated_data.append(replaced)
         else:
@@ -93,8 +95,12 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
             num_samples = samples_to_increase[class_tuple]
         else:
             num_samples = int(len(df_subset) * augmentation_rate)
-        if not df_single_out.empty and len(df_single_out) >= 3 and num_samples > 0:
-            augmented = apply_private_smote(df_single_out.drop(columns=['single_out']), epsilon, num_samples, replace=False)
+        if not df_subset.empty and len(df_subset) >= (knn+1) and not df_single_out.empty and num_samples > 0:
+            print(f"number of 'single_out': {len(df_single_out)}")
+            augmented = apply_private_smote_new(df_subset.drop(columns=["single_out"]), epsilon, num_samples, False, knn, k, key_vars, df_subset['single_out'])
+            # Drop "highest_risk" column if it exists
+            if 'highest_risk' in augmented.columns:
+                augmented = augmented.drop(columns=['highest_risk'])
             generated_data.append(augmented)
         else:
             print("not enough on 6b")

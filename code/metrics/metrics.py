@@ -12,12 +12,13 @@ import sys
 import itertools
 import subprocess
 from metrics.linkability import linkability
+from sdmetrics.single_table import BoundaryAdherence
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter
 
 # ------ LINKABILITY ------
-def run_linkability(folder_path, dir, og = False):
+def run_linkability(folder_path, dir, og = False, og_fair=False):
 
     file_list = [file for _, _, files in os.walk(folder_path) for file in files]  
     total_files = len(file_list) 
@@ -29,12 +30,20 @@ def run_linkability(folder_path, dir, og = False):
         print(f"\n\nProcessing file {idx}/{total_files}: {file}")
         if og:
             ds_match = re.match(r'^(.*?).csv', file)
+        elif og_fair:
+            ds_match =  re.match(r'^(.*?)_balanced', file)
         else:
             ds_match = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file)
-        nqi_match = re.search(r"QI(\d+)", file)  # Find number after "QI"
+
+        if not og_fair:
+            nqi_match = re.search(r"QI(\d+)", file)  # Find number after "QI"
 
         ds = ds_match.group(1) if ds_match else None
-        nqi = int(nqi_match.group(1)) if nqi_match else 0
+
+        if og_fair:
+            nqi = 0
+        else:
+            nqi = int(nqi_match.group(1)) if nqi_match else 0
 
         key_vars = get_key_vars(ds, "key_vars.csv")
 
@@ -50,12 +59,25 @@ def run_linkability(folder_path, dir, og = False):
 
         
         value, ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
-        results.append({"file":file, "value": value, "ci": ci})
+
+        # Compute Boundary Adherence
+        try:
+            real_data = pd.read_csv(orig_file)
+            synthetic_data = pd.read_csv(transf_file)
+            boundary_score = BoundaryAdherence.compute(real_data=real_data, synthetic_data=synthetic_data)
+            print(f"Boundary Adherence: {boundary_score}")
+        except Exception as e:
+            print(f"Could not compute Boundary Adherence for {file}: {e}")
+            boundary_score = None
+
+
+        results.append({"file":file, "value": value, "ci": ci, "boundary_adherence": boundary_score})
 
     df = pd.DataFrame(results)
     new_folder_path = os.path.join(*os.path.normpath(folder_path).split(os.sep)[-2:])
 
-    df_sorted = ds_name_sorter(df)
+    #df_sorted = ds_name_sorter(df)
+    df_sorted = df
     output_csv = f"results_metrics/linkability_results/{new_folder_path}.csv"
     df_sorted.to_csv(output_csv, index=False)
     print(f"\nSaved combined results to: {output_csv}")
@@ -72,6 +94,7 @@ def average_linkability(folder_path, combined_file_path, std=False):
     - dict: A dictionary containing the folder name, average risk, lower CI bound, upper CI bound, 
             and optionally standard deviations if std=True.
     """
+    print(combined_file_path)
     # Read the combined result CSV file
     if os.path.exists(combined_file_path):
         df = pd.read_csv(combined_file_path)
@@ -89,6 +112,11 @@ def average_linkability(folder_path, combined_file_path, std=False):
             average_risk = np.mean(total_values)
             average_ci_lower = np.mean(lower_bounds) if lower_bounds else 0
             average_ci_upper = np.mean(upper_bounds) if upper_bounds else 0
+            if 'boundary_adherence' in df.columns and not df['boundary_adherence'].isnull().all():
+                average_boundary = df['boundary_adherence'].mean()
+            else:
+                average_boundary = 0
+
             
             # Calculate standard deviations if std=True
             if std:
@@ -102,15 +130,17 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_ci_lower": average_ci_lower,
                     "average_ci_upper": average_ci_upper,
                     "std_ci_lower": std_ci_lower,
-                    "std_ci_upper": std_ci_upper
+                    "std_ci_upper": std_ci_upper,
                 }
             else:
                 result = {
                     "folder_name": folder_path,
                     "average_risk": average_risk,
                     "average_ci_lower": average_ci_lower,
-                    "average_ci_upper": average_ci_upper
+                    "average_ci_upper": average_ci_upper,
+                    "average_boundary_adherence": average_boundary,
                 }
+
 
             return result
         else:
@@ -120,7 +150,7 @@ def average_linkability(folder_path, combined_file_path, std=False):
         print(f"Warning: Combined file {combined_file_path} not found.")
         return None
 
-def process_linkability(input_folder, ds_type, output_file = "results_metrics/linkability_results/linkability_summary.csv", std=False, ):
+def process_linkability(input_folder, ds_type, output_file = "results_metrics/linkability_results/linkability_summary.csv", std=False, og_fair=False):
     """
     Process a single folder and write the calculated statistics to a CSV file.
 
@@ -131,7 +161,7 @@ def process_linkability(input_folder, ds_type, output_file = "results_metrics/li
     """
 
     # ------- run linkability -------
-    run_linkability(input_folder, ds_type)
+    run_linkability(input_folder, ds_type, og_fair=og_fair)
 
 
     # ------- calculate average linkability -------
@@ -157,6 +187,10 @@ def process_linkability(input_folder, ds_type, output_file = "results_metrics/li
             result["folder_name"] = folder_name
             all_results.append(result)
 
+        # Ensure 'average_boundary_adherence' is always present
+        if "average_boundary_adherence" not in result:
+            result["average_boundary_adherence"] = 0
+
     # Determine the fieldnames based on whether 'std' is True or False
     if std:
         fieldnames = ["folder_name", "average_risk", "std_risk", 
@@ -164,7 +198,7 @@ def process_linkability(input_folder, ds_type, output_file = "results_metrics/li
                       "std_ci_lower", "std_ci_upper"]
     else:
         fieldnames = ["folder_name", "average_risk", 
-                      "average_ci_lower", "average_ci_upper"]
+                      "average_ci_lower", "average_ci_upper",  "average_boundary_adherence"]
     
     # Write the results to a CSV file
     with open(output_file, mode='w', newline='') as file:
@@ -177,7 +211,7 @@ def process_linkability(input_folder, ds_type, output_file = "results_metrics/li
 
 # ------ PERFORMANCE AND FAIRNESS
     
-def average_fairness(input_folder, std=False):
+def average_fairness(input_folder, std=False, original=False):
     """
     Calculate the average (and optionally standard deviation) of fairness metrics from multiple files,
     ignoring NaN values.
@@ -207,11 +241,26 @@ def average_fairness(input_folder, std=False):
         if file_name.endswith(".csv"):
             file_path = os.path.join(input_folder, file_name)
 
-            match_dataset_name = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file_name)
-            dataset_name = match_dataset_name.group(1)
+            if not original:
+                match_dataset_name = re.match(r'^(.*?)_\d+(\.\d+)?-privateSMOTE', file_name)
+                dataset_name = match_dataset_name.group(1)
 
-            match_protected_attribute = re.search(r'_(\w+)_QI', file_name)
-            protected_attribute = match_protected_attribute.group(1)
+                match_protected_attribute = re.search(r'_(\w+)_QI', file_name)
+                protected_attribute = match_protected_attribute.group(1)
+                #TODO REMOVE
+            elif file_name == "10_balanced_ESSENTIAL_DENSITY.csv":
+                protected_attribute = "ESSENTIAL_DENSITY"
+                dataset_name ="10"    
+            elif file_name == "37_balanced_international_plan.csv":
+                protected_attribute = "international_plan"
+                dataset_name ="37"     
+            elif file_name == "37_balanced_voice_mail_plan.csv":
+                protected_attribute = "voice_mail_plan"
+                dataset_name ="37"     
+            else:
+                parts = file_name.replace('.csv', '').split('_')
+                dataset_name = parts[0]          
+                protected_attribute = parts[-1] 
             class_column = get_class_column(dataset_name, "class_attribute.csv")
 
             print(f"\nProcessing file: {file_path} with protected attribute {protected_attribute} and class {class_column}")
@@ -239,7 +288,8 @@ def average_fairness(input_folder, std=False):
     new_folder_path = os.path.join(*os.path.normpath(input_folder).split(os.sep)[-2:])
     output_csv = f"results_metrics/fairness_results/{new_folder_path}.csv"
     #results_df_sorted = results_df.sort_values(by="File")
-    df_sorted = ds_name_sorter(results_df, "File")
+    #df_sorted = ds_name_sorter(results_df, "File")
+    df_sorted = results_df
     df_sorted.to_csv(output_csv, index=False)
     print(f"Stored in: {output_csv}")
 
@@ -258,7 +308,7 @@ def average_fairness(input_folder, std=False):
 
     return average_fairness
 
-def process_fairness(input_folder, output_file="results_metrics/fairness_results/fairness_summary.csv", std=False):
+def process_fairness(input_folder, output_file="results_metrics/fairness_results/fairness_summary.csv", std=False, original=False):
     """
     Process a single folder and write the calculated fairness statistics to a CSV file.
 
@@ -274,7 +324,9 @@ def process_fairness(input_folder, output_file="results_metrics/fairness_results
     print(f"Processing folder: {input_folder}")
 
     # ------- calculate average -------
-    result = average_fairness(input_folder, std=std)
+    result = average_fairness(input_folder, std=std, original=original)
+
+    print(result)
 
     if not result:
         print("⚠️ No valid result found to process.")
@@ -283,19 +335,24 @@ def process_fairness(input_folder, output_file="results_metrics/fairness_results
     # ------- write the average -------
     # Ensure directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    new_row = pd.DataFrame([result])
 
     # Determine fieldnames from the result keys
     fieldnames = list(result.keys())
 
     # Write or append to the CSV
     if os.path.exists(output_file):
-        # If file exists, read and append
+        # Read existing file
         existing_df = pd.read_csv(output_file)
-        new_row = pd.DataFrame([result])
+
+        # Reorder new_row columns to match existing
+        new_row = new_row[existing_df.columns]
+
+        # Append
         final_df = pd.concat([existing_df, new_row], ignore_index=True)
     else:
-        # Create new DataFrame
-        final_df = pd.DataFrame([result])
+        # Write fresh file with correct column order
+        final_df = new_row
 
     # Save to CSV
     final_df.to_csv(output_file, index=False)
