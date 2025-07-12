@@ -34,7 +34,6 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
-    timing_results = []
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for file_name in os.listdir(input_folder):
@@ -45,8 +44,6 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
 
         dataset_name_match = re.match(r'^(.*?).csv', file_name)
         dataset_name = dataset_name_match.group(1)
-
-        k = 3
 
         protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
         class_column = get_class_column(dataset_name, "class_attribute.csv")
@@ -87,30 +84,6 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
                                         k=k, 
                                         knn=knn,
                                         augmentation_rate=0.3)
-                                    
-                                    end_time = time.time()
-                                    elapsed_time = end_time - start_time
-                                    print(f"Processing time: {elapsed_time} seconds\n")
-                                    timing_results.append({
-                                                            "filename": f"{dataset_name}_eps{epsilon}_k{k}_knn{knn}_aug{augmentation_rate}_privateSMOTE_{protected_attribute}_QI{ix}.csv",
-                                                            "time taken (s)": elapsed_time
-                                                        })
-
-    ######################## TIMING ################################
-
-    # Save timing results to CSV
-    if timing_results:
-        timing_df = pd.DataFrame(timing_results)
-        timing_df = timing_df.sort_values(by=timing_df.columns[0], ascending=True)
-        input_folder_name = os.path.basename(os.path.normpath(input_folder))
-        timing_folder = os.path.join("test", "times", input_folder_name)
-        if not os.path.exists(timing_folder):
-            os.makedirs(timing_folder)
-        timing_csv_path = os.path.join(timing_folder, "timing_3.csv")
-        timing_df.to_csv(timing_csv_path, index=False)
-        print(f"Saved processed file: {timing_csv_path}\n")
-
-        process_files_in_folder(timing_folder, input_folder)
 
 def run_original_privsmote(input_folder, epsilons, final_folder_name):
     # creating output folder
