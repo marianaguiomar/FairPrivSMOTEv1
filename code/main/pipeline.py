@@ -25,12 +25,12 @@ augmentation_values = [0.3, 0.4]
 default_input_folder = "datasets/inputs/fair"
 
 
-def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=None):
+def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     if final_folder_name is None:
         final_folder_name = input_folder_name
-    final_output_folder = f"datasets/outputs/outputs_3/{final_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_4/{final_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -57,6 +57,10 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
         for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y)):
             train_data = data.iloc[train_idx].reset_index(drop=True)
             test_data = data.iloc[test_idx].reset_index(drop=True)
+            output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
+            os.makedirs(output_fold_folder, exist_ok=True)
+
+            invalid = True
 
             for protected_attribute in protected_attribute_list:
                 if protected_attribute not in data.columns:
@@ -70,12 +74,11 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
                         for k in k_values:
                             for knn in knn_values:
                                 for augmentation_rate in augmentation_values:
-                                    start_time = time.time()
-
+                                    '''
                                     smote_v3(
                                         data=train_data,
                                         dataset_name=dataset_name, 
-                                        output_folder=final_output_folder, 
+                                        output_folder=output_fold_folder, 
                                         class_column=class_column, 
                                         protected_attribute=protected_attribute, 
                                         qi=qi, 
@@ -83,12 +86,17 @@ def method_3(input_folder, epsilons, knns, pers, majority, final_folder_name=Non
                                         epsilon=epsilon, 
                                         k=k, 
                                         knn=knn,
-                                        augmentation_rate=0.3)
+                                        augmentation_rate=augmentation_rate)
+                                        '''
+                                    invalid = False
+            if not invalid:
+                process_fairness(output_fold_folder, test_data)
+                #process_linkability(output_fold_folder, train_data, test_data)
 
 def run_original_privsmote(input_folder, epsilons, final_folder_name):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
-    final_output_folder = f"datasets/outputs/outputs_3/{final_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_4/{final_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -140,7 +148,7 @@ def run_original_fairsmote(input_folder, final_folder_name):
     # creating output folder
     print(input_folder)
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
-    final_output_folder = f"datasets/outputs/outputs_3/{final_folder_name}"
+    final_output_folder = f"datasets/outputs/outputs_4/{final_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
@@ -229,9 +237,20 @@ def run_original_fairsmote(input_folder, final_folder_name):
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
 
-input_folder_name = "fair"
-final_folder_name = "fair_onlypriv"
+input_folder_name = "test"
+final_folder_name = "test"
 method_number = "3"
+
+### MY SMOTE ###
+method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name)
+
+
+
+
+
+
+
+
 
 # ------- SMOTE --------
 #run_original_fairsmote(f"datasets/inputs/{input_folder_name}", final_folder_name)
@@ -282,8 +301,8 @@ features_linkability = ['value', 'boundary_adherence']
 #    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
 
 
-for feature_name in features_linkability:
-    plot_feature_across_files("results_metrics/linkability_results/to_plot", feature_name)
+#for feature_name in features_linkability:
+#    plot_feature_across_files("results_metrics/linkability_results/to_plot", feature_name)
 
 
 '''

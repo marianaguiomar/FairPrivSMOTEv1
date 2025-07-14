@@ -159,46 +159,38 @@ def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_c
 
 
 # Function to compute all metrics
-def compute_fairness_metrics(file_path, protected_attribute, class_column):
-    dt = pd.read_csv(file_path)
+def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column):
+    train_data = pd.read_csv(file_path)
 
     print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
 
-    # Separate features and target
-    X = dt.drop(columns=[class_column])  # Features (all columns except the target)
-    y = dt[class_column]  # Target column
+    # Separate features and target for train and test
+    X_train = train_data.drop(columns=[class_column])
+    y_train = train_data[class_column]
 
-    clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100, class_weight='balanced')  # LSR
-    dataset_orig_train, dataset_orig_test = train_test_split(pd.concat([X, y], axis=1), test_size=0.3, shuffle=True)
+    X_test = test_fold.drop(columns=[class_column])
+    y_test = test_fold[class_column]
 
-    # Extract features and target dynamically
-    X_train, y_train = dataset_orig_train.iloc[:, :-1], dataset_orig_train.iloc[:, -1]
-    X_test, y_test = dataset_orig_test.iloc[:, :-1], dataset_orig_test.iloc[:, -1]
-
-    # === Standardize features ===
+    # Standardize features
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
-    
+
+    # Fit model
+    clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100, class_weight='balanced')
     clf.fit(X_train, y_train)
 
     y_pred = clf.predict(X_test)
-    y_pred_proba = clf.predict_proba(X_test)[:, 1]  # Probabilities for ROC-AUC
-
-    # Compute ROC-AUC score
-    roc_auc = roc_auc_score(y_test, y_pred_proba)
-
     return {
         "File": file_path,
-        "Recall": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column),
-        "FAR": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far', class_column),
-        "Precision": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision', class_column),
-        "Accuracy": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy', class_column),
-        "F1 Score": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1', class_column),
-        #"ROC AUC": roc_auc,
-        "AOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod', class_column),
-        "EOD_protected": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod', class_column),
-        "SPD": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'SPD', class_column),
-        "DI": measure_final_score(dataset_orig_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'DI', class_column),
+        "Recall": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column),
+        "FAR": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far', class_column),
+        "Precision": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision', class_column),
+        "Accuracy": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy', class_column),
+        "F1 Score": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1', class_column),
+        "AOD_protected": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod', class_column),
+        "EOD_protected": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod', class_column),
+        "SPD": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'SPD', class_column),
+        "DI": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'DI', class_column),
     }
 

@@ -90,7 +90,7 @@ def run_linkability(folder_path, dir, og = False):
             
     
 
-run_linkability("datasets/outputs/outputs_3/others", "priv")
+run_linkability("datasets/outputs/outputs_4/others", "priv")
 
 
 

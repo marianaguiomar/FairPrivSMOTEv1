@@ -63,9 +63,9 @@ if __name__ == "__main__":
 
 
 def linkability(orig_file, transf_file, control_file, key_vars, nqi_number):
-    data = pd.read_csv(orig_file)
+    data = orig_file
     transf_data = pd.read_csv(transf_file)
-    control_data = pd.read_csv(control_file)
+    control_data = control_file
 
     evaluator = LinkabilityEvaluator(ori=data,
                                     syn=transf_data,

@@ -81,7 +81,7 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
 
         # --- Step 6a: Replace single-outs if any ---
         if len(df_single_out)>= (knn+1):
-            replaced = apply_private_smote_replace(df_single_out.drop(columns=['single_out']), epsilon, len(df_single_out), replace=True)
+            replaced = apply_private_smote_replace(df_single_out.drop(columns=['single_out']), epsilon, len(df_single_out), knn, replace=True)
             cleaned_minority_data.append(df_non_single_out)
             generated_data.append(replaced)
         else:
