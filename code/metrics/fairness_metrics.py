@@ -8,6 +8,7 @@ from sklearn.neighbors import KDTree
 from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
 
 
 
@@ -162,7 +163,7 @@ def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_c
 def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column):
     train_data = pd.read_csv(file_path)
 
-    print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
+    #print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
 
     # Separate features and target for train and test
     X_train = train_data.drop(columns=[class_column])
@@ -177,7 +178,13 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
     X_test = scaler.transform(X_test)
 
     # Fit model
-    clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100, class_weight='balanced')
+    clf = XGBClassifier(
+        objective='binary:logistic',
+        #use_label_encoder=False,
+        eval_metric='logloss',
+        scale_pos_weight=(y_train.value_counts()[0] / y_train.value_counts()[1]),  # optional: handle imbalance
+        random_state=42
+    )
     clf.fit(X_train, y_train)
 
     y_pred = clf.predict(X_test)

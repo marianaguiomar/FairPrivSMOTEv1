@@ -241,8 +241,11 @@ def average_fairness(input_folder, test_fold, std=False, original=False):
     if not os.path.isdir(input_folder):
         print("Error: Directory does not exist.")
         return None
+    
+    csv_files = [f for f in os.listdir(input_folder) if f.endswith(".csv")]
+    total = len(csv_files)
 
-    for file_name in os.listdir(input_folder):
+    for idx, file_name in enumerate(os.listdir(input_folder), start=1):
         if file_name.endswith(".csv"):
             file_path = os.path.join(input_folder, file_name)
 
@@ -269,7 +272,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False):
                 protected_attribute = parts[-1] 
             class_column = get_class_column(dataset_name, "class_attribute.csv")
 
-            print(f"\nProcessing file: {file_path} with protected attribute {protected_attribute} and class {class_column}")
+            print(f"\nProcessing file {idx}/{total}: {file_path} with protected attribute {protected_attribute} and class {class_column}")
             fairness_metrics = compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column)
             file_metrics = {"File": file_name}
 
