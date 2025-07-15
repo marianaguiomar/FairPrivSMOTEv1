@@ -74,7 +74,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                         for k in k_values:
                             for knn in knn_values:
                                 for augmentation_rate in augmentation_values:
-                                    '''
+                                    
                                     smote_v3(
                                         data=train_data,
                                         dataset_name=dataset_name, 
@@ -87,11 +87,11 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         k=k, 
                                         knn=knn,
                                         augmentation_rate=augmentation_rate)
-                                        '''
+                                        
                                     invalid = False
             if not invalid:
                 process_fairness(output_fold_folder, test_data)
-                #process_linkability(output_fold_folder, train_data, test_data)
+                process_linkability(output_fold_folder, train_data, test_data)
 
 def run_original_privsmote(input_folder, epsilons, final_folder_name):
     # creating output folder
