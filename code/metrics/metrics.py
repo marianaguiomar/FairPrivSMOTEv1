@@ -254,7 +254,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False):
                 match_dataset_name = re.match(r'^(.*?)_eps', file_name)
                 dataset_name = match_dataset_name.group(1)
 
-                match_protected_attribute = re.search(r'_privateSMOTE_(.*?)_QI', file_name)
+                match_protected_attribute = re.search(r'_fairprivateSMOTE_(.*?)_QI', file_name)
                 protected_attribute = match_protected_attribute.group(1)
                 #TODO REMOVE
             elif file_name == "10_balanced_ESSENTIAL_DENSITY.csv":
