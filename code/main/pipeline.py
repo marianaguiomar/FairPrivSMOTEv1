@@ -22,6 +22,11 @@ k_values = [3,5]
 knn_values = [3,5]
 augmentation_values = [0.3, 0.4]
 
+#epsilon_values = [0.1]
+#k_values = [3]
+#knn_values = [3]
+#augmentation_values = [0.3]
+
 default_input_folder = "datasets/inputs/fair"
 
 

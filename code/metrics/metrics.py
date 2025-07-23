@@ -52,9 +52,9 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         transf_file = os.path.join(transf_folder_path, file)
         control_file = test_fold_path
 
-        print(f"transf file: {transf_file}")
+        #print(f"transf file: {transf_file}")
 
-        print(f"key_vars: {key_vars[nqi]}")
+        #print(f"key_vars: {key_vars[nqi]}")
 
         
         value, ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
@@ -64,7 +64,7 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
             real_data = orig_file
             synthetic_data = pd.read_csv(transf_file)
             boundary_score = BoundaryAdherence.compute(real_data=real_data, synthetic_data=synthetic_data)
-            print(f"Boundary Adherence: {boundary_score}")
+            #print(f"Boundary Adherence: {boundary_score}")
         except Exception as e:
             print(f"Could not compute Boundary Adherence for {file}: {e}")
             boundary_score = None
@@ -169,14 +169,14 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
 
     # ------- calculate average linkability -------
     base_folder = os.path.normpath(input_folder).split(os.sep)
-    print("base_folder:", base_folder)
+    #print("base_folder:", base_folder)
     all_results = []
     '''
     results_folder = os.path.join("results_metrics", "linkability_results", base_folder)
     os.makedirs(results_folder, exist_ok=True)
     print(f"Processing folder: {results_folder}")
     '''
-    print(f"Processing file: {linkability_file}")
+    #print(f"Processing file: {linkability_file}")
 
     # Derive folder name from the individual file path
     folder_name = os.path.relpath(linkability_file, start="results_metrics/linkability_results").replace('\\', '/')
@@ -272,7 +272,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False):
                 protected_attribute = parts[-1] 
             class_column = get_class_column(dataset_name, "class_attribute.csv")
 
-            print(f"\nProcessing file {idx}/{total}: {file_path} with protected attribute {protected_attribute} and class {class_column}")
+            print(f"\nProcessing fairness of file {idx}/{total}: {file_path} with protected attribute {protected_attribute} and class {class_column}")
             fairness_metrics = compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column)
             file_metrics = {"File": file_name}
 
@@ -297,12 +297,12 @@ def average_fairness(input_folder, test_fold, std=False, original=False):
     new_folder_path = os.path.join(*os.path.normpath(input_folder).split(os.sep)[-4:])
     output_csv = f"results_metrics/fairness_results/{new_folder_path}.csv"
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    print(f"Saving results to: {output_csv}")
+    #print(f"Saving results to: {output_csv}")
     #results_df_sorted = results_df.sort_values(by="File")
     #df_sorted = ds_name_sorter(results_df, "File")
     df_sorted = results_df
     df_sorted.to_csv(output_csv, index=False)
-    print(f"Stored in: {output_csv}")
+    #print(f"Stored in: {output_csv}")
 
     # Compute averages (and optionally stds)
     average_fairness = {"folder_name": new_folder_path}
@@ -332,7 +332,7 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
         print(f"Error: Path '{input_folder}' does not exist or is not a directory.")
         return
 
-    print(f"Processing folder: {input_folder}")
+    #print(f"Processing folder: {input_folder}")
 
     # ------- calculate average -------
     result = average_fairness(input_folder, test_fold, std=std, original=original)

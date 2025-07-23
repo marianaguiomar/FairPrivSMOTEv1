@@ -9,6 +9,9 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 
 
@@ -99,6 +102,7 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
         return calculate_SPD(a, b, c, d, e, f, g, h)
 
 def calculate_average_odds_difference(a, b, c, d, e, f, g, h):
+    '''
     print("a: ", a,
             "b: ", b, 
             "c: ", c,
@@ -107,6 +111,7 @@ def calculate_average_odds_difference(a, b, c, d, e, f, g, h):
             "f: ", f,
             "g: ", g,
             "h: ", h)
+    '''
     return round((calculate_FPR_difference(a, b, c, d, e, f, g, h) +
                   calculate_TPR_difference(a, b, c, d, e, f, g, h)) / 2, 2)
 
@@ -173,18 +178,32 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
     y_test = test_fold[class_column]
 
     # Standardize features
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    #scaler = StandardScaler()
+    #X_train = scaler.fit_transform(X_train)
+    #X_test = scaler.transform(X_test)
+
+    # Identify categorical columns (object type)
+    categorical_cols = X_train.select_dtypes(include='object').columns.tolist()
+
+    # Create one-hot encoder for categorical columns
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_cols)
+        ],
+        remainder='passthrough'  # Leave the rest (numerical columns) as-is
+    )
 
     # Fit model
-    clf = XGBClassifier(
-        objective='binary:logistic',
-        #use_label_encoder=False,
-        eval_metric='logloss',
-        scale_pos_weight=(y_train.value_counts()[0] / y_train.value_counts()[1]),  # optional: handle imbalance
-        random_state=42
-    )
+    # Create a pipeline with preprocessing + XGBoost model
+    clf = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', XGBClassifier(
+            objective='binary:logistic',
+            eval_metric='logloss',
+            scale_pos_weight=(y_train.value_counts()[0] / y_train.value_counts()[1]),
+            random_state=42
+        ))
+    ])
     clf.fit(X_train, y_train)
 
     y_pred = clf.predict(X_test)

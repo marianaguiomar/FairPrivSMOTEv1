@@ -14,6 +14,9 @@ def smote_v3(data, dataset_name, output_folder, class_column, protected_attribut
 
     smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, augmentation_rate, k, knn)
     # Save the processed file with "_[epsilon]" and "_QI[qi]" added to the filename
+    if smote_df is None:
+        print(f"Skipping dataset {dataset_name} due to insufficient data for SMOTE.")
+        return
     output_path = os.path.join(output_folder, f"{dataset_name}_eps{epsilon}_k{k}_knn{knn}_aug{augmentation_rate}_fairprivateSMOTE_{protected_attribute}_QI{qi_index}.csv")
     smote_df.to_csv(output_path, index=False)
     print(f"Saved processed file: {output_path}\n")

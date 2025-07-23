@@ -81,11 +81,11 @@ class PrivateSMOTE:
     '''
 
     def khighest_risk(self):
-        print(f"k = {self.k}")  # Print the value of k
+        #(f"k = {self.k}")  # Print the value of k
         """Create highest_risk variable based on k-anonymity"""
         self.samples['highest_risk'] = self.single_out_column.values
         high_risk_count = self.samples['highest_risk'].sum()  # Count of samples marked as high risk
-        print(f"Number of high-risk samples: {high_risk_count} out of {len(self.samples)}")
+        #print(f"Number of high-risk samples: {high_risk_count} out of {len(self.samples)}")
         return self.samples
 
     def nearest_neighbours(self, df):
@@ -151,8 +151,8 @@ class PrivateSMOTE:
         # Initialize the synthetic samples with the number of samples and attributes
         self.synthetic = np.empty(
             shape=(desired_synthetic_count, self.X_train_shape[1] + 1), dtype='float32')
-        print("all sample: ", self.samples.shape)
-        print("n highest risk: ", self.X_train_shape)
+        #print("all sample: ", self.samples.shape)
+        #print("n highest risk: ", self.X_train_shape)
         self.x = self.enc_data()
         # Find the minimum value for each numerical column
         self.min_values = [self.x[:, i].min(
@@ -168,7 +168,7 @@ class PrivateSMOTE:
         highest_risk_indices = self.samples.loc[self.samples['highest_risk']
                                                 == 1, self.samples.columns[:-2]].index
         
-        print(f"number of 'highest_risk': {len(highest_risk_indices)}")
+        #print(f"number of 'highest_risk': {len(highest_risk_indices)}")
         
         # Handle how many samples to draw
         if desired_synthetic_count <= len(highest_risk_indices):

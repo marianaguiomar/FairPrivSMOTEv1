@@ -57,6 +57,93 @@ def convert_to_csv(data_file: str, names_file: str, output_csv: str):
     df.to_csv(output_csv, index=False)
     print(f"Conversion complete! Saved as {output_csv}")
 
+def process_adult():
+    # Load dataset
+    dataset_orig = pd.read_csv("datasets/original_datasets/fair/adult.csv")
+
+    ## Drop NULL values
+    dataset_orig = dataset_orig.dropna()
+    dataset_orig = dataset_orig[~dataset_orig.apply(lambda row: row.astype(str).str.contains(r'\?').any(), axis=1)]
+
+
+    ## Drop 
+    dataset_orig = dataset_orig.drop(['fnlwgt'], axis=1, errors='ignore')  # Ignore if columns are missing
+
+     ## handle categorical features
+    categorical_numeric_cols = ['workclass', 'education', 'marital-status', 'occupation', 'relationship', 'native-country']
+    for col in categorical_numeric_cols:
+        if col in dataset_orig.columns:
+            dataset_orig[col] = dataset_orig[col].astype('object')
+
+
+    ## Change symbolics to numerics
+
+    dataset_orig['race'] = np.where(dataset_orig['race']=='White', 1, 0)
+    dataset_orig['sex'] = np.where(dataset_orig['sex']=='Male', 1, 0)
+    dataset_orig['Probability'] = np.where(dataset_orig['Probability']=='>50K', 1, 0)
+
+
+    #handle nomerical features
+    numeric_to_normalize = ['age', 'education-num', 'captial-gain', 'capital-loss', 'hours-per-week']
+    scaler = MinMaxScaler()
+    for col in numeric_to_normalize:
+        if col in dataset_orig.columns:
+            dataset_orig[col] = scaler.fit_transform(dataset_orig[[col]])
+
+
+    # Save the processed dataset
+    output_path = f"datasets/original_treated/fair_new/adult.csv"
+    dataset_orig.to_csv(output_path, index=False)
+    print(f"Processed file saved: {output_path}")
+
+def process_compas():
+    # Load dataset
+    dataset_orig = pd.read_csv("datasets/original_datasets/fair/compas.csv")
+
+    print(dataset_orig.columns)
+    print(dataset_orig.shape)
+
+
+    ## Drop 
+    dataset_orig = dataset_orig.drop(['id', 'days_b_screening_arrest', 'c_jail_in', 'c_jail_out',
+                                      'c_case_number', 'c_offense _date', 'c_arrest_date', 'c_days_from_compas',
+                                      'c_charge_desc', 'r_case_number', 'r_charge_degree', 'r_days_from_arrest', 'r_offense_date',                         
+                                      'r_charge_desc', 'r_jail_in', 'r_jail_out', 'violent_recid', 'vr_case_number', 
+                                      'vr_charge_degree', 'vr_offense_date', 'vr_charge_desc', 'type_of_assessment',
+                                      'screening_date', 'v_type_of_assessment', 'in_custody', 'out_custody'], axis=1, errors='ignore')  # Ignore if columns are missing
+
+     ## handle categorical features
+    categorical_numeric_cols = ['name', 'first', 'last', 'compas_screening_date', 'dob', 'age_cat', 'juv_fel_count', 
+                                'juv_misd_count', 'juv_other_count', 'prior_count', 'score_text', 'v_score_text',
+                                'decile_score', 'c_offense_date', 'c_charge_desc', 'v_decile_score', 'v_screening_date', 
+                                'start', 'end']
+    for col in categorical_numeric_cols:
+        if col in dataset_orig.columns:
+            dataset_orig[col] = dataset_orig[col].astype('object')
+
+
+    ## Change symbolics to numerics
+
+    dataset_orig['race'] = np.where(dataset_orig['race']=='Caucasian', 1, 0)
+    dataset_orig['sex'] = np.where(dataset_orig['sex']=='Male', 1, 0)
+    dataset_orig['c_charge_degree'] = np.where(dataset_orig['c_charge_degree']=='F', 1, 0)
+
+
+    #handle nomerical features
+    numeric_to_normalize = ['age','c_days_from_compas',]
+    scaler = MinMaxScaler()
+    for col in numeric_to_normalize:
+        if col in dataset_orig.columns:
+            dataset_orig[col] = scaler.fit_transform(dataset_orig[[col]])
+
+
+## Drop NULL values
+    dataset_orig = dataset_orig.dropna()
+
+    # Save the processed dataset
+    output_path = f"datasets/original_treated/fair_new/compas.csv"
+    dataset_orig.to_csv(output_path, index=False)
+    print(f"Processed file saved: {output_path}")
 
 def process_student():
 
@@ -780,3 +867,5 @@ def split_datasets(base_path='datasets/inputs/fair', test_size=0.3, random_state
 #process_37()
 #process_55()
 #process_56()
+#process_adult()
+#process_compas()
