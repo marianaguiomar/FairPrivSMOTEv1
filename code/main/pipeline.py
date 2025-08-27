@@ -10,6 +10,7 @@ from sklearn.model_selection import StratifiedKFold
 from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes, check_protected_attribute
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.fair_priv_smote import smote_v3
+from main.privatesmote_old import apply_original_private_smote
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 from metrics.metrics import process_linkability, process_fairness
 from metrics.plots import plot_feature_across_files
@@ -17,15 +18,18 @@ from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
 
 
-epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
-k_values = [3,5]
-knn_values = [3,5]
-augmentation_values = [0.3, 0.4]
+#epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
+#k_values = [3,5]
+#knn_values = [3,5]
+#augmentation_values = [0.3, 0.4]
+#per_values = [2, 3]
 
-#epsilon_values = [0.1]
-#k_values = [3]
-#knn_values = [3]
-#augmentation_values = [0.3]
+epsilon_values = [0.1]
+k_values = [3]
+knn_values = [3]
+augmentation_values = [0.3]
+per_values = [2]
+
 
 default_input_folder = "datasets/inputs/fair"
 
@@ -98,56 +102,59 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 process_fairness(output_fold_folder, test_data)
                 process_linkability(output_fold_folder, train_data, test_data)
 
-def run_original_privsmote(input_folder, epsilons, final_folder_name):
+def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, per_values, final_folder_name):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     final_output_folder = f"datasets/outputs/outputs_4/{final_folder_name}"
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
-    # check for train/test split. if it doesnt exist, create it
-    train_dir = os.path.join(input_folder, "train")
-    test_dir = os.path.join(input_folder, "test")
-    if not (os.path.exists(train_dir) and os.path.exists(test_dir)):
-        print("Train/Test folders not found. Running split_datasets()...")
-        split_datasets(input_folder)
-
-
     ######################## APPLY ORIGINAL SMOTE ################################
-    for epsilon in epsilons:
-        for file_name in os.listdir(train_dir):
-            file_path = os.path.join(train_dir, file_name)
-            data = pd.read_csv(file_path)
+    for file_name in os.listdir(input_folder):
+        file_path = os.path.join(input_folder, file_name)
+        data = pd.read_csv(file_path)
 
-            dataset_name_match = re.match(r'^(.*?).csv', file_name)
-            dataset_name = dataset_name_match.group(1)
+        dataset_name_match = re.match(r'^(.*?).csv', file_name)
+        dataset_name = dataset_name_match.group(1)
 
-            protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
-            class_column = get_class_column(dataset_name, "class_attribute.csv")
-            key_vars = get_key_vars(file_name, "key_vars.csv")
+        protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
+        class_column = get_class_column(dataset_name, "class_attribute.csv")
+        key_vars = get_key_vars(file_name, "key_vars.csv")
 
-            for i in range(len(key_vars)):
-                # Define the arguments
-                args = [
-                    "python", "code/main/privatesmote_old.py",
-                    "--input_file", file_path,
-                    "--knn", "1",
-                    "--per", "3",
-                    "--epsilon", str(epsilon),
-                    "--k", "5",
-                    "--key_vars", *key_vars[i],  # each variable separated
-                    "--output_folder", final_output_folder,
-                    "--nqi", str(i)
-                ]
+        # cross validation
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        X = data.drop(columns=[class_column])
+        y = data[class_column]
 
-                # Run the subprocess
-                try:
-                    result = subprocess.run(args, check=True, capture_output=True, text=True)
-                    print("Output:\n", result.stdout)
-                    print("Errors:\n", result.stderr)
-                except subprocess.CalledProcessError as e:
-                    print("An error occurred:")
-                    print(e.stderr)
+        for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y)):
+            train_data = data.iloc[train_idx].reset_index(drop=True)
+            test_data = data.iloc[test_idx].reset_index(drop=True)
+            output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
+            os.makedirs(output_fold_folder, exist_ok=True)
+
+            for ix, qi in enumerate(key_vars):
+                for epsilon in epsilon_values:
+                    for k in k_values:
+                        for knn in knn_values:
+                            for per in per_values:
+                                #print("")
+                                
+                                apply_original_private_smote(
+                                    data=train_data,
+                                    dataset_name=dataset_name,
+                                    knn=knn,
+                                    per=per,
+                                    epsilon=epsilon,
+                                    k=k,
+                                    key_vars=qi,
+                                    output_folder=output_fold_folder,
+                                    nqi=ix
+                                )
+                                
+            
+            for protected_attribute in protected_attribute_list:
+                process_fairness(output_fold_folder, test_data, output_file="results_metrics/fairness_results/fairness_intermediate_original.csv", original=True, protected_attribute=protected_attribute)
+            process_linkability(output_fold_folder, train_data, test_data, output_file="results_metrics/linkability_results/linkability_intermediate_original.csv")
 
 def run_original_fairsmote(input_folder, final_folder_name):
     # creating output folder
@@ -243,12 +250,14 @@ def run_original_fairsmote(input_folder, final_folder_name):
 
 
 input_folder_name = "test"
-final_folder_name = "test"
+final_folder_name = "test_original"
 method_number = "3"
 
 ### MY SMOTE ###
-method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name)
+#method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name)
 
+### ORIGINAL SMOTE ###
+run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
 
 
 
