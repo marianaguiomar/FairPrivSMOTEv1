@@ -18,17 +18,17 @@ from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
 
 
-#epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
-#k_values = [3,5]
-#knn_values = [3,5]
-#augmentation_values = [0.3, 0.4]
-#per_values = [2, 3]
+epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
+k_values = [3,5]
+knn_values = [3,5]
+augmentation_values = [0.3, 0.4]
+per_values = [2, 3]
 
-epsilon_values = [0.1]
-k_values = [3]
-knn_values = [3]
-augmentation_values = [0.3]
-per_values = [2]
+#epsilon_values = [0.1]
+#k_values = [3]
+#knn_values = [3]
+#augmentation_values = [0.3]
+#per_values = [2]
 
 
 default_input_folder = "datasets/inputs/fair"
