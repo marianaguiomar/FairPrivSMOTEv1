@@ -18,7 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter
 
 # ------ LINKABILITY ------
-def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = False, og_fair=False):
+def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = False, fair=False):
 
     file_list = [file for _, _, files in os.walk(transf_folder_path) for file in files]  
     total_files = len(file_list) 
@@ -31,20 +31,16 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         print(f"\n\nProcessing file {idx}/{total_files}: {file}")
         if og:
             ds_match = re.match(r'^(.*?).csv', file)
-        elif og_fair:
-            ds_match =  re.match(r'^(.*?)_balanced', file)
+        elif fair:
+            ds_match =  re.match(r'^(.*?)_cr', file)
         else:
             ds_match = re.match(r'^(.*?)_eps', file)
 
-        if not og_fair:
+        if not fair:
             nqi_match = re.search(r"QI(\d+)", file)  # Find number after "QI"
+            nqi = int(nqi_match.group(1)) if nqi_match else 0
 
         ds = ds_match.group(1) if ds_match else None
-
-        if og_fair:
-            nqi = 0
-        else:
-            nqi = int(nqi_match.group(1)) if nqi_match else 0
 
         key_vars = get_key_vars(ds, "key_vars.csv")
 
@@ -56,21 +52,38 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
 
         #print(f"key_vars: {key_vars[nqi]}")
 
-        
-        value, ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
+        if not fair:
+            value, ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
 
-        # Compute Boundary Adherence
-        try:
-            real_data = orig_file
-            synthetic_data = pd.read_csv(transf_file)
-            boundary_score = BoundaryAdherence.compute(real_data=real_data, synthetic_data=synthetic_data)
-            #print(f"Boundary Adherence: {boundary_score}")
-        except Exception as e:
-            print(f"Could not compute Boundary Adherence for {file}: {e}")
-            boundary_score = None
+            # Compute Boundary Adherence
+            try:
+                real_data = orig_file
+                synthetic_data = pd.read_csv(transf_file)
+                boundary_score = BoundaryAdherence.compute(real_data=real_data, synthetic_data=synthetic_data)
+                #print(f"Boundary Adherence: {boundary_score}")
+            except Exception as e:
+                print(f"Could not compute Boundary Adherence for {file}: {e}")
+                boundary_score = None
+
+            results.append({"file":file, "value": value, "ci": ci, "boundary_adherence": boundary_score})
+
+        if fair:
+            for fair_nqi in range(5):
+                value, ci = linkability(orig_file, transf_file, control_file, key_vars[fair_nqi], fair_nqi)
+
+                # Compute Boundary Adherence
+                try:
+                    real_data = orig_file
+                    synthetic_data = pd.read_csv(transf_file)
+                    boundary_score = BoundaryAdherence.compute(real_data=real_data, synthetic_data=synthetic_data)
+                    #print(f"Boundary Adherence: {boundary_score}")
+                except Exception as e:
+                    print(f"Could not compute Boundary Adherence for {file}: {e}")
+                    boundary_score = None
+
+                results.append({"file":f"{file}_QI{fair_nqi}.csv", "value": value, "ci": ci, "boundary_adherence": boundary_score})
 
 
-        results.append({"file":file, "value": value, "ci": ci, "boundary_adherence": boundary_score})
 
     df = pd.DataFrame(results)
     new_folder_path = os.path.join(*os.path.normpath(transf_folder_path).split(os.sep)[-4:])
@@ -153,7 +166,7 @@ def average_linkability(folder_path, combined_file_path, std=False):
         print(f"Warning: Combined file {combined_file_path} not found.")
         return None
 
-def process_linkability(input_folder, train_fold, test_fold, output_file = "results_metrics/linkability_results/linkability_intermediate.csv", std=False, og_fair=False):
+def process_linkability(input_folder, train_fold, test_fold, output_file = "results_metrics/linkability_results/linkability_intermediate.csv", std=False, fair=False):
     """
     Process a single folder and write the calculated statistics to a CSV file.
 
@@ -164,7 +177,7 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
     """
     print("start folder:", input_folder)
     # ------- run linkability -------
-    linkability_file = run_linkability(input_folder, train_fold, test_fold, og_fair=og_fair)
+    linkability_file = run_linkability(input_folder, train_fold, test_fold, fair=fair)
 
 
     # ------- calculate average linkability -------
@@ -216,7 +229,7 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
 
 # ------ PERFORMANCE AND FAIRNESS
     
-def average_fairness(input_folder, test_fold, std=False, original=False, protected_attribute=None):
+def average_fairness(input_folder, test_fold, std=False, original=False, protected_attribute=None, fair=False):
     """
     Calculate the average (and optionally standard deviation) of fairness metrics from multiple files,
     ignoring NaN values.
@@ -249,7 +262,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
         if file_name.endswith(".csv"):
             file_path = os.path.join(input_folder, file_name)
 
-            if not original:
+            if not original and not fair:
                 
                 match_dataset_name = re.match(r'^(.*?)_eps', file_name)
                 dataset_name = match_dataset_name.group(1)
@@ -257,6 +270,11 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
                 match_protected_attribute = re.search(r'_fairprivateSMOTE_(.*?)_QI', file_name)
                 protected_attribute = match_protected_attribute.group(1)
                 #TODO REMOVE
+            elif fair:
+                match_dataset_name = re.match(r'^(.*?)_cr', file_name)
+                dataset_name = match_dataset_name.group(1)
+                match_protected_attribute = re.search(r'_fairSMOTE_(.*?).csv', file_name)
+                protected_attribute = match_protected_attribute.group(1)
             elif original:
                 match_dataset_name = re.match(r'^(.*?)_eps', file_name)
                 dataset_name = match_dataset_name.group(1)
@@ -327,7 +345,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
 
     return average_fairness
 
-def process_fairness(input_folder, test_fold, output_file="results_metrics/fairness_results/fairness_intermediate.csv", std=False, original=False, protected_attribute=None):
+def process_fairness(input_folder, test_fold, output_file="results_metrics/fairness_results/fairness_intermediate.csv", std=False, original=False, protected_attribute=None, fair=False):
     """
     Process a single folder and write the calculated fairness statistics to a CSV file.
 
@@ -343,7 +361,7 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
     #print(f"Processing folder: {input_folder}")
 
     # ------- calculate average -------
-    result = average_fairness(input_folder, test_fold, std=std, original=original, protected_attribute=protected_attribute)
+    result = average_fairness(input_folder, test_fold, std=std, original=original, protected_attribute=protected_attribute, fair=fair)
 
     print(result)
 
