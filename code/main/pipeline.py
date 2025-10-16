@@ -13,22 +13,22 @@ from main.fair_priv_smote import smote_v3
 from main.privatesmote_old import apply_original_private_smote
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
 from metrics.metrics import process_linkability, process_fairness
-from metrics.plots import plot_feature_across_files
+from metrics.plots import plot_feature_across_files, plot_feature_across_folders
 from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
 
 
-epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
-k_values = [3,5]
-knn_values = [3,5]
-augmentation_values = [0.3, 0.4]
-per_values = [2, 3]
+#epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
+#k_values = [3,5]
+#knn_values = [3,5]
+#augmentation_values = [0.3, 0.4]
+#per_values = [2, 3]
 
-#epsilon_values = [0.1]
-#k_values = [3]
-#knn_values = [3]
-#augmentation_values = [0.3]
-#per_values = [2]
+epsilon_values = [0.1]
+k_values = [3]
+knn_values = [3]
+augmentation_values = [0.3]
+per_values = [2]
 
 
 default_input_folder = "datasets/inputs/fair"
@@ -257,7 +257,7 @@ method_number = "3"
 #method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name)
 
 ### ORIGINAL SMOTE ###
-run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
+#run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
 
 
 
@@ -307,16 +307,27 @@ method_number = "3"
 
 
 
-folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number}"  # Replace with your actual folder path
+folder_paths_fairness = [
+    "experiment/third/fairness/test_lr",
+    #"experiment/second/fairness/test_original",
+    "experiment/second/fairness/test_fair"
+]
+
 folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
-features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
+#features_fairness = ['AOD_protected', 'EOD_protected', 'SPD', 'DI']
+features_fairness = ['SPD']
+
+for feature_name in features_fairness:
+    plot_feature_across_folders(folder_paths_fairness, feature_name, outliers=False )
+
+folder_paths_linkability = [
+    "experiment/first/linkability/test",
+    "experiment/first/linkability/test_original",
+    "experiment/first/linkability/test_fair"
+]
 features_linkability = ['value', 'boundary_adherence']
-#for feature_name in features_fairness:
-#    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
-
-
 #for feature_name in features_linkability:
-#    plot_feature_across_files("results_metrics/linkability_results/to_plot", feature_name)
+#    plot_feature_across_folders(folder_paths_linkability, feature_name, outliers=False, save_name="linkability_boxplot_zoomed_median")
 
 
 '''

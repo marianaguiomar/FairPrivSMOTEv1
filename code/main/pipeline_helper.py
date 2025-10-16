@@ -266,3 +266,61 @@ def ds_name_sorter(df, file_column='file'):
     df_sorted = df_sorted.drop(columns=['dataset_name', 'num_part', 'qi_number'])
 
     return df_sorted
+
+def count_protected_class_combinations(input_folder):
+    """
+    For each CSV in input_folder, counts the number of samples
+    for each combination of protected_attribute (0/1) and class_attribute (0/1).
+
+    Prints the results in a readable format and returns a dictionary.
+    """
+    all_counts = {}
+
+    for file_name in os.listdir(input_folder):
+        if not file_name.endswith(".csv"):
+            continue
+        file_path = os.path.join(input_folder, file_name)
+        data = pd.read_csv(file_path)
+
+        dataset_name_match = re.match(r'^(.*?).csv', file_name)
+        dataset_name = dataset_name_match.group(1)
+
+        protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
+        class_column = get_class_column(dataset_name, "class_attribute.csv")
+
+        all_counts[dataset_name] = {}
+
+        for protected_attribute in protected_attribute_list:
+            zero_zero = len(data[(data[class_column] == 0) & (data[protected_attribute] == 0)])
+            zero_one  = len(data[(data[class_column] == 0) & (data[protected_attribute] == 1)])
+            one_zero  = len(data[(data[class_column] == 1) & (data[protected_attribute] == 0)])
+            one_one   = len(data[(data[class_column] == 1) & (data[protected_attribute] == 1)])
+
+            counts = {
+                'zero_zero': zero_zero,
+                'zero_one': zero_one,
+                'one_zero': one_zero,
+                'one_one': one_one
+            }
+
+            all_counts[dataset_name][protected_attribute] = counts
+
+    # Print in readable format
+    print("\nProtected attribute / class counts per dataset:\n")
+    for dataset, prot_attrs in all_counts.items():
+        print(dataset)
+        print("=" * len(dataset))
+        for prot_attr, counts in prot_attrs.items():
+            print(f"Protected attribute: {prot_attr}")
+            for combo, count in counts.items():
+                print(f"  {combo}: {count}")
+            print()  # Empty line between protected attributes
+        print()  # Empty line between datasets
+
+    return all_counts
+
+if __name__ == "__main__":
+    # Example usage
+    input_folder = "datasets/original_treated/fair_new"
+    counts = count_protected_class_combinations(input_folder)
+    print(counts)

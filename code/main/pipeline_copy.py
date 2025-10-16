@@ -261,8 +261,8 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
                     process_linkability(output_fold_folder, train_data, test_data, "results_metrics/linkability_results/linkability_intermediate_fair.csv", fair=True)
 
 
-input_folder_name = "test"
-final_folder_name = "test_fair"
+input_folder_name = "debug"
+final_folder_name = "debug"
 method_number = "3"
 
 ### MY SMOTE ###

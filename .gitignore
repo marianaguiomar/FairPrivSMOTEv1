@@ -86,6 +86,8 @@ node_modules/
 
 datasets/
 results_metrics/
+experiment/
+plots/
 
 class_attribute.csv
 key_vars.csv
@@ -97,3 +99,4 @@ priv39/
 priv39/lib/python3.9/site-packages/pyarrow/libarrow.1801.dylib
 priv39/lib/python3.9/site-packages/llvmlite/binding/libllvmlite.dylib
 priv39/lib/python3.9/site-packages/torch/lib/libtorch_cpu.dylib
+

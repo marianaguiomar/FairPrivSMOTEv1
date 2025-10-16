@@ -206,7 +206,7 @@ def process_german():
             dataset_orig[col] = scaler.fit_transform(dataset_orig[[col]])
 
     ## Change symbolics to numerics
-    dataset_orig['class-label'] = np.where(dataset_orig['class-label'] == "2", 1, 0)
+    dataset_orig['class-label'] = np.where(dataset_orig['class-label'] == 2, 1, 0)
     dataset_orig['sex'] = np.where(dataset_orig['personal-status-and-sex'].isin(['A91', 'A93', 'A94']), 1, 0)
     dataset_orig['personal-status'] = np.where(dataset_orig['personal-status-and-sex'].isin(['A92', 'A94']), 1, 0)
     dataset_orig['telephone'] = np.where(dataset_orig['telephone'] == 'A192', 1, 0)
@@ -411,7 +411,7 @@ def process_bank():
     dataset_orig = dataset_orig.dropna()
 
      ## handle categorical features
-    categorical_numeric_cols = ['marital', 'job', 'education', 'contact', 'month', 'poutcome']
+    categorical_numeric_cols = ['job', 'education', 'contact', 'month', 'poutcome']
     for col in categorical_numeric_cols:
         if col in dataset_orig.columns:
             dataset_orig[col] = dataset_orig[col].astype('object')
@@ -424,11 +424,12 @@ def process_bank():
         if col in dataset_orig.columns:
             dataset_orig[col] = scaler.fit_transform(dataset_orig[[col]])
 
-    ## Change symbolics to numerics
+    ## Change symbolics to numerics-2
+    dataset_orig['marital'] = np.where(dataset_orig['marital'] == 'married', 1, 0)
     dataset_orig['default'] = np.where(dataset_orig['default'] == 'yes', 1, 0)
     dataset_orig['housing'] = np.where(dataset_orig['housing'] == 'yes', 1, 0)
     dataset_orig['loan'] = np.where(dataset_orig['loan'] == 'yes', 1, 0)
-    dataset_orig['Probability'] = np.where(dataset_orig['loan'] == 'yes', 1, 0)
+    dataset_orig['Probability'] = np.where(dataset_orig['Probability'] == 'yes', 1, 0)
 
 
 
@@ -847,6 +848,8 @@ def split_datasets(base_path='datasets/inputs/fair', test_size=0.3, random_state
             test_df.to_csv(os.path.join(test_dir, f"{base_filename}.csv"), index=False)
 
     print("Dataset splitting complete.")
+
+
 
 #split_datasets("datasets/inputs/fair")
     

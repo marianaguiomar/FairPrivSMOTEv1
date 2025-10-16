@@ -57,6 +57,83 @@ def plot_feature_across_files(folder_path, feature, label_method = False):
     plt.tight_layout()
     plt.show()
 
+def plot_feature_across_folders(folder_paths, feature, label_method=False, outliers=True, save_name=None):
+    """
+    Create a boxplot for a specific feature across multiple folders of CSV files,
+    considering all values globally for outlier detection.
+
+    Parameters:
+    - folder_paths (list of str): List of folder paths to include in the plot.
+    - feature (str): Feature (column) to plot boxplots for.
+    - label_method (bool): If True, include method/dataset in labels.
+    """
+    all_values = []
+    all_labels = []
+
+    for folder_path in folder_paths:
+        folder_name = os.path.basename(folder_path.rstrip("/"))
+
+        # Recursively find all CSVs
+        all_files = []
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                if file.endswith(".csv"):
+                    all_files.append(os.path.join(root, file))
+
+        all_files.sort()  # Sort alphabetically for consistency
+
+        for file in all_files:
+            print(f"Processing file: {file}")
+            try:
+                df = pd.read_csv(file)
+            except pd.errors.EmptyDataError:
+                print(f"Skipping empty CSV: {file}")
+                continue
+
+            if feature in df.columns:
+                # Label: include method/dataset if desired, otherwise just folder name
+                if label_method:
+                    parts = file.split(os.sep)
+                    method = parts[-3] if len(parts) >= 3 else "method"
+                    dataset_folder = parts[-2] if len(parts) >= 2 else "dataset"
+                    label = f"{folder_name}/{method}/{dataset_folder}"
+                else:
+                    label = folder_name
+
+                values = df[feature].dropna().values
+                all_values.extend(values)
+                all_labels.extend([label] * len(values))
+
+                print(f"{label}: {values[:10]}{'...' if len(values) > 10 else ''}")
+                print(f"Total values: {len(values)}\n")
+
+    if not all_values:
+        print(f"No valid data found for feature '{feature}' in the given folders.")
+        return
+
+    # Create long-form DataFrame for Seaborn
+    plot_df = pd.DataFrame({"value": all_values, "label": all_labels})
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.boxplot(x="label", y="value", data=plot_df, showfliers=outliers, ax=ax)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
+    ax.set_xlabel("Folder / File")
+    ax.set_ylabel(feature)
+    ax.set_title(f"Boxplots of '{feature}' across folders (global outliers)", fontsize=14)
+    plt.tight_layout()
+
+    # Save first, then show
+    if save_name:
+        os.makedirs("plots", exist_ok=True)
+        save_path = os.path.join("plots", f"{save_name}.png")
+        fig.savefig(save_path)
+        print(f"Plot saved as {save_path}")
+
+    plt.show()
+
+    
+
 def plot_time_across_files(folder_path, feature):
     """
     Create a boxplot for a specific feature across multiple CSV files in a folder.

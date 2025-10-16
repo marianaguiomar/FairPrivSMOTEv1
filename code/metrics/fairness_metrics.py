@@ -12,6 +12,16 @@ from xgboost import XGBClassifier
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+import os
+import glob
+import sys
+
+from sklearn.model_selection import StratifiedKFold
+current_dir = os.path.dirname(os.path.abspath(__file__))       # .../code/metrics
+parent_dir = os.path.dirname(current_dir)                      # .../code
+main_dir = os.path.join(parent_dir, "main")                    # .../code/main
+sys.path.append(main_dir)
+from pipeline_helper import process_protected_attributes, get_class_column
 
 
 
@@ -118,12 +128,12 @@ def calculate_average_odds_difference(a, b, c, d, e, f, g, h):
 def calculate_Disparate_Impact(a, b, c, d, e, f, g, h):
     P_male = (a + d) / (a + b + c + d)
     P_female = (e + h) / (e + f + g + h)
-    return round(1 - abs(P_female / P_male), 2)
+    return round(P_female / P_male, 2) 
 
 def calculate_SPD(a, b, c, d, e, f, g, h):
     P_male = (a + d) / (a + b + c + d)
     P_female = (e + h) / (e + f + g + h)
-    return round(abs(P_female - P_male), 2)
+    return round(P_female - P_male, 2)
 
 def calculate_equal_opportunity_difference(a, b, c, d, e, f, g, h):
     return calculate_TPR_difference(a, b, c, d, e, f, g, h)
@@ -166,7 +176,8 @@ def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_c
 
 # Function to compute all metrics
 def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column):
-    train_data = pd.read_csv(file_path)
+    #train_data = pd.read_csv(file_path)
+    train_data = file_path
 
     #print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
 
@@ -194,6 +205,17 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
     )
 
     # Fit model
+    '''
+    clf = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', LogisticRegression(
+            solver='liblinear',   # works well for small/medium datasets
+            penalty='l2',
+            C=1.0,
+            max_iter=100
+        ))
+    ])
+    '''
     # Create a pipeline with preprocessing + XGBoost model
     clf = Pipeline(steps=[
         ('preprocessor', preprocessor),
@@ -204,9 +226,10 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
             random_state=42
         ))
     ])
-    clf.fit(X_train, y_train)
-
-    y_pred = clf.predict(X_test)
+    
+    #clf.fit(X_train, y_train)
+    
+    #y_pred = clf.predict(X_test)
     return {
         "File": file_path,
         "Recall": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column),
@@ -220,3 +243,71 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
         "DI": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'DI', class_column),
     }
 
+
+def evaluate_fairness_on_folder(input_folder):
+    """
+    Iterates through all CSVs in input_folder, applies 5-fold cross-validation,
+    prints fairness metrics for each dataset/fold, and also the averages.
+    
+    Parameters:
+        input_folder (str): Path to folder with CSV files.
+        protected_attribute (str): The sensitive attribute column (e.g., "gender").
+        class_column (str): The target label column.
+    """
+    # Get all csv files
+    csv_files = glob.glob(os.path.join(input_folder, "*.csv"))
+
+    for file_path in csv_files:
+        dataset_name = os.path.splitext(os.path.basename(file_path))[0]
+        # Get protected attributes from mapping file
+        protected_attribute = process_protected_attributes(dataset_name, "protected_attributes.csv")
+        if isinstance(protected_attribute, list):
+            protected_attribute = protected_attribute[0]
+        class_column = get_class_column(dataset_name, "class_attribute.csv")
+
+        print(f"\n=== Dataset: {dataset_name} ===")
+
+        # Load dataset
+        data = pd.read_csv(file_path)
+        X = data.drop(columns=[class_column])
+        y = data[class_column]
+
+        # Create Stratified 5-Fold
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+        fold_results = []
+
+        for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y)):
+            train_data = data.iloc[train_idx].reset_index(drop=True)
+            test_data = data.iloc[test_idx].reset_index(drop=True)
+
+            # Compute fairness metrics using your function
+            metrics = compute_fairness_metrics(train_data, test_data, protected_attribute, class_column)
+
+            fairness_subset = {
+                "AOD": metrics["AOD_protected"],
+                "EOD": metrics["EOD_protected"],
+                "SPD": metrics["SPD"],
+                "DI": metrics["DI"],
+            }
+            fold_results.append(fairness_subset)
+
+            # Print fold results
+            #print(f"\nFold {fold_idx+1}:")
+            #print(f"  AOD = {fairness_subset['AOD']}")
+            #print(f"  EOD = {fairness_subset['EOD']}")
+            #print(f"  SPD = {fairness_subset['SPD']}")
+            #print(f"  DI  = {fairness_subset['DI']}")
+
+        # Compute averages
+        avg_results = {metric: sum(fr[metric] for fr in fold_results) / len(fold_results)
+                       for metric in ["AOD", "EOD", "SPD", "DI"]}
+
+        print(f"\n--- Averages for {dataset_name} ---")
+        print(f"  AOD (avg) = {avg_results['AOD']}")
+        print(f"  EOD (avg) = {avg_results['EOD']}")
+        print(f"  SPD (avg) = {avg_results['SPD']}")
+        print(f"  DI  (avg) = {avg_results['DI']}")
+
+if __name__ == "__main__":
+    evaluate_fairness_on_folder("datasets/inputs/test_done")
