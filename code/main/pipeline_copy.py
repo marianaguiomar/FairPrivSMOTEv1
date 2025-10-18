@@ -231,7 +231,7 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
                                 
                                 if to_be_increased > 0:
                                     #print(f"Generating {to_be_increased} new samples for '{key}'")
-                                    df_balanced = generate_samples(to_be_increased, df_subgroup, cr=cr, f=f)
+                                    df_balanced = generate_samples(to_be_increased, df_subgroup, columns=df_subgroup.columns, cr=cr, f=f)
                                     df_balanced = pd.DataFrame(df_balanced, columns=df_subgroup.columns)
                                     df_balanced_parts.append(df_balanced)
 

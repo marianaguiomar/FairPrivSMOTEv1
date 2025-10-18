@@ -8,19 +8,42 @@ import numpy as np
 from scipy.spatial import distance as dist
 from scipy.spatial import distance
 from sklearn.neighbors import NearestNeighbors as NN
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.compose import ColumnTransformer
 
 
-def fit_knn_numeric(df, n_neighbors=3):
-    """Fit KNN on numeric-only encoded version of df, return knn and encoders."""
-    df_encoded = df.copy()
-    encoders = {}
-    for col in df_encoded.select_dtypes(include='object').columns:
-        le = LabelEncoder()
-        df_encoded[col] = le.fit_transform(df_encoded[col])
-        encoders[col] = le
+
+def fit_knn_numeric(df, n_neighbors=5):
+    """
+    Fit KNN on numeric + one-hot encoded categorical features.
+    Returns:
+        knn: fitted NearestNeighbors
+        df_encoded: numeric DataFrame for KNN (rows aligned with df)
+        ct: ColumnTransformer used for encoding
+    """
+    idx = df.index
+
+    # Identify categorical columns
+    categorical_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+    numeric_cols = [c for c in df.columns if c not in categorical_cols]
+
+    # ColumnTransformer: one-hot encode categorical, passthrough numeric
+    transformers = []
+    if categorical_cols:
+        transformers.append(('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_cols))
+    if numeric_cols:
+        transformers.append(('num', 'passthrough', numeric_cols))  # leave numeric as-is
+
+    ct = ColumnTransformer(transformers, remainder='drop')
+    numeric_array = ct.fit_transform(df)  # numpy array, same row order as df
+
+    # Wrap as DataFrame to preserve index
+    df_encoded = pd.DataFrame(numeric_array, index=idx)
+
+    # Fit KNN
     knn = NN(n_neighbors=n_neighbors, algorithm='auto').fit(df_encoded)
-    return knn, df_encoded, encoders
+
+    return knn, df_encoded, ct
 
 def get_ngbr(df, df_encoded, knn):
     """Pick neighbors using encoded df, but return rows from original df."""
@@ -36,10 +59,10 @@ def get_ngbr(df, df_encoded, knn):
     candidate_3 = df.iloc[ngbr[0][2]]
     return parent_candidate, candidate_2, candidate_3
 
-def generate_samples(no_of_samples, df, cr=0.8, f=0.8):
+def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
     total_data = df.values.tolist()
     # Fit KNN on numeric representation
-    knn, df_encoded, encoders = fit_knn_numeric(df, n_neighbors=3)
+    knn, df_encoded, encoders = fit_knn_numeric(df, n_neighbors=5)
 
 
     for _ in range(no_of_samples):
@@ -63,4 +86,13 @@ def generate_samples(no_of_samples, df, cr=0.8, f=0.8):
         total_data.append(new_candidate)
 
     final_df = pd.DataFrame(total_data, columns=df.columns) 
+    if columns is not None and len(columns) == final_df.shape[1]:
+        final_df.columns = columns
+    else:
+        # fallback to df columns if none provided or mismatch
+        try:
+            final_df.columns = df.columns
+        except Exception:
+            pass
+
     return final_df
