@@ -176,8 +176,8 @@ def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_c
 
 # Function to compute all metrics
 def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column):
-    #train_data = pd.read_csv(file_path)
-    train_data = file_path
+    train_data = pd.read_csv(file_path)
+    #train_data = file_path
 
     #print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
 
