@@ -226,7 +226,9 @@ def run_original_fairsmote(input_folder, final_folder_name):
                         print(f"Generating {to_be_increased} new samples for '{key}'")
                         df_balanced = generate_samples(to_be_increased, df_subgroup, columns=df_subgroup.columns, cr=0.8, f=0.8)
                         df_balanced = pd.DataFrame(df_balanced, columns=df_subgroup.columns)
+                        df_balanced.to_csv(f"df_{key}_generated_original.csv", index=False)
                         df_balanced_parts.append(df_balanced)
+                        
 
                     # Always include the original group
                     df_balanced_parts.append(df_subgroup)

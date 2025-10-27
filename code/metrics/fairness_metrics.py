@@ -12,6 +12,7 @@ from xgboost import XGBClassifier
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+
 import os
 import glob
 import sys
@@ -28,11 +29,38 @@ from pipeline_helper import process_protected_attributes, get_class_column
 def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class_column, metric='aod',):
     #print("Training labels distribution:", np.unique(y_train, return_counts=True))
     #print("Testing labels distribution:", np.unique(y_test, return_counts=True))
+    '''
+    X_train_orig = pd.read_csv("debug_X_train_original.csv")
+    X_train_new = pd.read_csv("debug_X_train_mine.csv")
+
+    print("Columns match:", list(X_train_orig.columns) == list(X_train_new.columns))
+    print("Values equal:", (X_train_orig == X_train_new).all().all())
+
+    y_train_orig = pd.read_csv("debug_y_train_original.csv")
+    y_train_new = pd.read_csv("debug_y_train_mine.csv")
+
+    print("Columns match:", list(y_train_orig.columns) == list(y_train_new.columns))
+    print("Values equal:", (y_train_orig == y_train_new).all().all())
+    '''
+
+    #scaler = StandardScaler()
+    #X_train_scaled = scaler.fit_transform(x_train)
+
+    print(x_train.dtypes)  # Shows the type of every column
+    print(x_train.columns[-1])  # Name of the last column
+    print(x_train[x_train.columns[-1]].dtype)  # dtype of the last column
+    print(type(x_train[x_train.columns[-1]].iloc[0]))  # Python type of the first value in that column
+
 
     clf.fit(x_train, y_train)
+    print(clf.coef_, clf.intercept_)
     y_pred = clf.predict(x_test)
 
     #print(np.unique(y_pred, return_counts=True))
+    print("Type of y_test:", type(y_test))
+    print("y_test dtype:", getattr(y_test, 'dtype', None))  # works if y_test is a Series or ndarray
+    print("Type of y_pred:", type(y_pred))
+    print("y_pred dtype:", getattr(y_pred, 'dtype', None))  # works if y_pred is a Series or ndarray
 
     TN, FP, FN, TP = confusion_matrix(y_test, y_pred).ravel()
     #print(f"confusion matrix -> TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
@@ -111,67 +139,102 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
     elif metric == "SPD":
         return calculate_SPD(a, b, c, d, e, f, g, h)
 
-def calculate_average_odds_difference(a, b, c, d, e, f, g, h):
-    '''
-    print("a: ", a,
-            "b: ", b, 
-            "c: ", c,
-            "d: ", d,
-            "e: ", e,
-            "f: ", f,
-            "g: ", g,
-            "h: ", h)
-    '''
-    return round((calculate_FPR_difference(a, b, c, d, e, f, g, h) +
-                  calculate_TPR_difference(a, b, c, d, e, f, g, h)) / 2, 2)
+def calculate_average_odds_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female):
+    # TPR_male = TP_male/(TP_male+FN_male)
+    # TPR_female = TP_female/(TP_female+FN_female)
+    # FPR_male = FP_male/(FP_male+TN_male)
+    # FPR_female = FP_female/(FP_female+TN_female)
+    # average_odds_difference = abs(abs(TPR_male - TPR_female) + abs(FPR_male - FPR_female))/2
+    FPR_diff = calculate_FPR_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female)
+    TPR_diff = calculate_TPR_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female)
+    average_odds_difference = (FPR_diff + TPR_diff)/2
+    #print("average_odds_difference",average_odds_difference)
+    return round(average_odds_difference,2)
 
-def calculate_Disparate_Impact(a, b, c, d, e, f, g, h):
-    P_male = (a + d) / (a + b + c + d)
-    P_female = (e + h) / (e + f + g + h)
-    return round(P_female / P_male, 2) 
+def calculate_Disparate_Impact(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female):
+    P_male = (TP_male + FP_male)/(TP_male + TN_male + FN_male + FP_male)
+    P_female = (TP_female + FP_female)/(TP_female + TN_female + FN_female +  FP_female)    
+    DI = (P_female/P_male)
+    return round((1 - abs(DI)),2)
 
-def calculate_SPD(a, b, c, d, e, f, g, h):
-    P_male = (a + d) / (a + b + c + d)
-    P_female = (e + h) / (e + f + g + h)
-    return round(P_female - P_male, 2)
+def calculate_SPD(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female):
+    P_male = (TP_male + FP_male)/(TP_male + TN_male + FN_male + FP_male)
+    P_female = (TP_female + FP_female) /(TP_female + TN_female + FN_female +  FP_female)       
+    SPD = (P_female - P_male)
+    return round(abs(SPD),2)
 
-def calculate_equal_opportunity_difference(a, b, c, d, e, f, g, h):
-    return calculate_TPR_difference(a, b, c, d, e, f, g, h)
 
-def calculate_TPR_difference(a, b, c, d, e, f, g, h):
-    return round((a / (a + c)) - (e / (e + g)), 2)
+def calculate_equal_opportunity_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female):
+    # TPR_male = TP_male/(TP_male+FN_male)
+    # TPR_female = TP_female/(TP_female+FN_female)    
+    # equal_opportunity_difference = abs(TPR_male - TPR_female)
+    #print("equal_opportunity_difference:",equal_opportunity_difference)
+    return calculate_TPR_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female)
 
-def calculate_FPR_difference(a, b, c, d, e, f, g, h):
-    return round((h / (h + f)) - (d / (d + b)), 2)
+def calculate_TPR_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female):
+    TPR_male = TP_male/(TP_male+FN_male)
+    TPR_female = TP_female/(TP_female+FN_female)
+    # print("TPR_male:",TPR_male,"TPR_female:",TPR_female)   
+    diff = (TPR_male - TPR_female)
+    return round(diff,2)
 
-def calculate_recall(TP, FP, FN, TN):
-    return round(TP / (TP + FN) if (TP + FN) != 0 else 0, 2)
+def calculate_FPR_difference(TP_male , TN_male, FN_male,FP_male, TP_female , TN_female , FN_female,  FP_female):
+    FPR_male = FP_male/(FP_male+TN_male)
+    FPR_female = FP_female/(FP_female+TN_female)
+    # print("FPR_male:",FPR_male,"FPR_female:",FPR_female)    
+    diff = (FPR_female - FPR_male)    
+    return round(diff,2)
 
-def calculate_far(TP, FP, FN, TN):
-    return round(FP / (FP + TN) if (FP + TN) != 0 else 0, 2)
 
-def calculate_precision(TP, FP, FN, TN):
-    return round(TP / (TP + FP) if (TP + FP) != 0 else 0, 2)
+def calculate_recall(TP,FP,FN,TN):
+    if (TP + FN) != 0:
+        recall = TP / (TP + FN)
+    else:
+        recall = 0
+    return round(recall,2)
 
-def calculate_F1(TP, FP, FN, TN):
-    precision = calculate_precision(TP, FP, FN, TN)
-    recall = calculate_recall(TP, FP, FN, TN)
-    return round((2 * precision * recall) / (precision + recall) if (precision + recall) != 0 else 0, 2)
+def calculate_far(TP,FP,FN,TN):
+    if (FP + TN) != 0:
+        far = FP / (FP + TN)
+    else:
+        far = 0
+    return round(far,2)
 
-def calculate_accuracy(TP, FP, FN, TN):
-    return round((TP + TN) / (TP + TN + FP + FN), 2)
+def calculate_precision(TP,FP,FN,TN):
+    if (TP + FP) != 0:
+        prec = TP / (TP + FP)
+    else:
+        prec = 0
+    return round(prec,2)
+
+def calculate_F1(TP,FP,FN,TN):
+    precision = calculate_precision(TP,FP,FN,TN)
+    recall = calculate_recall(TP,FP,FN,TN)
+    F1 = (2 * precision * recall)/(precision + recall)    
+    return round(F1,2)
+
+def calculate_accuracy(TP,FP,FN,TN):
+    return round((TP + TN)/(TP + TN + FP + FN),2)
 
 def consistency_score(X, y, n_neighbors=5):
+        
     num_samples = X.shape[0]
+    # y = y.values # Do it if it's not np array
+    # learn a KNN on the features
     nbrs = NearestNeighbors(n_neighbors, algorithm='ball_tree').fit(X)
     _, indices = nbrs.kneighbors(X)
-    
-    consistency = sum(abs(y[i] - np.mean(y[indices[i]])) for i in range(num_samples)) / num_samples
-    return 1.0 - consistency
+
+    # compute consistency score
+    consistency = 0.0
+    for i in range(num_samples):
+        consistency += np.abs(y[i] - np.mean(y[indices[i]]))
+    consistency = 1.0 - consistency/num_samples       
+    return consistency
+
 
 def measure_final_score(test_df, clf, X_train, y_train, X_test, y_test, biased_col, metric, class_column):
     df = copy.deepcopy(test_df)
-    return get_counts(clf, X_train, y_train, X_test, y_test, df, biased_col, class_column, metric=metric)
+    return get_counts(clf, X_train, y_train, X_test, y_test, df, biased_col, metric=metric, class_column=class_column)
 
 
 # Function to compute all metrics
@@ -192,7 +255,7 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
     #scaler = StandardScaler()
     #X_train = scaler.fit_transform(X_train)
     #X_test = scaler.transform(X_test)
-
+    '''
     # Identify categorical columns (object type)
     categorical_cols = X_train.select_dtypes(include='object').columns.tolist()
 
@@ -203,9 +266,10 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
         ],
         remainder='passthrough'  # Leave the rest (numerical columns) as-is
     )
+    
 
     # Fit model
-    '''
+
     clf = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('classifier', LogisticRegression(
@@ -215,6 +279,9 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
             max_iter=100
         ))
     ])
+    
+    '''
+    clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=100)
     '''
     # Create a pipeline with preprocessing + XGBoost model
     clf = Pipeline(steps=[
@@ -226,6 +293,7 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
             random_state=42
         ))
     ])
+    '''
     
     #clf.fit(X_train, y_train)
     

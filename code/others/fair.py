@@ -12,7 +12,6 @@ from sklearn.preprocessing import LabelEncoder, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 
 
-
 def fit_knn_numeric(df, n_neighbors=5):
     """
     Fit KNN on numeric + one-hot encoded categorical features.
@@ -44,7 +43,7 @@ def fit_knn_numeric(df, n_neighbors=5):
     knn = NN(n_neighbors=n_neighbors, algorithm='auto').fit(df_encoded)
 
     return knn, df_encoded, ct
-
+'''
 def get_ngbr(df, df_encoded, knn):
     """Pick neighbors using encoded df, but return rows from original df."""
     rand_sample_idx = random.randint(0, df.shape[0] - 1)
@@ -58,15 +57,34 @@ def get_ngbr(df, df_encoded, knn):
     candidate_2 = df.iloc[ngbr[0][1]]
     candidate_3 = df.iloc[ngbr[0][2]]
     return parent_candidate, candidate_2, candidate_3
+'''
+def get_ngbr(df, knn):
+            random.seed(42)
+            rand_sample_idx = random.randint(0, df.shape[0] - 1)
+            parent_candidate = df.iloc[rand_sample_idx]
+            ngbr = knn.kneighbors(parent_candidate.values.reshape(1,-1),3,return_distance=False)
+            candidate_1 = df.iloc[ngbr[0][0]]
+            candidate_2 = df.iloc[ngbr[0][1]]
+            candidate_3 = df.iloc[ngbr[0][2]]
+            return rand_sample_idx, parent_candidate,candidate_2,candidate_3
 
 def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
     total_data = df.values.tolist()
+    df_knn = df.copy()
+    # Convert all numeric-like strings to float/int
+    for col in df_knn.select_dtypes(include=['object', 'bool']):
+        try:
+            df_knn[col] = df_knn[col].astype(float)
+        except:
+            pass  # leave strings as-is
+    knn = NN(n_neighbors=5,algorithm='auto').fit(df_knn.values)
     # Fit KNN on numeric representation
-    knn, df_encoded, encoders = fit_knn_numeric(df, n_neighbors=5)
+    #knn, df_encoded, encoders = fit_knn_numeric(df, n_neighbors=5)
 
 
     for _ in range(no_of_samples):
-        parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, df_encoded, knn)
+        #parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, df_encoded, knn)
+        rand_sample_idx, parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, knn)
         new_candidate = []
 
         for key, value in parent_candidate.items():
@@ -84,6 +102,12 @@ def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
                 new_candidate.append(abs(value + f * (child_candidate_1[key] - child_candidate_2[key])))
 
         total_data.append(new_candidate)
+        if _ == 0 or _ == 1734:
+            print(rand_sample_idx)
+            print("Parent candidate:", parent_candidate.values)
+            print("Child candidate 1:", child_candidate_1.values)
+            print("Child candidate 2:", child_candidate_2.values)
+            print("First generated sample:", new_candidate)
 
     final_df = pd.DataFrame(total_data, columns=df.columns) 
     if columns is not None and len(columns) == final_df.shape[1]:
