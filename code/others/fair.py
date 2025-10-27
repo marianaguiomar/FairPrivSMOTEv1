@@ -59,7 +59,7 @@ def get_ngbr(df, df_encoded, knn):
     return parent_candidate, candidate_2, candidate_3
 '''
 def get_ngbr(df, knn):
-            random.seed(42)
+            #random.seed(42)
             rand_sample_idx = random.randint(0, df.shape[0] - 1)
             parent_candidate = df.iloc[rand_sample_idx]
             ngbr = knn.kneighbors(parent_candidate.values.reshape(1,-1),3,return_distance=False)
@@ -69,6 +69,8 @@ def get_ngbr(df, knn):
             return rand_sample_idx, parent_candidate,candidate_2,candidate_3
 
 def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
+    cr = 0.8
+    f = 0.8
     total_data = df.values.tolist()
     df_knn = df.copy()
     # Convert all numeric-like strings to float/int
@@ -102,12 +104,15 @@ def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
                 new_candidate.append(abs(value + f * (child_candidate_1[key] - child_candidate_2[key])))
 
         total_data.append(new_candidate)
-        if _ == 0 or _ == 1734:
+        '''
+        if _ == 0 or _ == 7:
             print(rand_sample_idx)
             print("Parent candidate:", parent_candidate.values)
             print("Child candidate 1:", child_candidate_1.values)
             print("Child candidate 2:", child_candidate_2.values)
             print("First generated sample:", new_candidate)
+        '''
+        
 
     final_df = pd.DataFrame(total_data, columns=df.columns) 
     if columns is not None and len(columns) == final_df.shape[1]:

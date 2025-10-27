@@ -43,24 +43,29 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
     print("Values equal:", (y_train_orig == y_train_new).all().all())
     '''
 
-    #scaler = StandardScaler()
-    #X_train_scaled = scaler.fit_transform(x_train)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(x_train)
+    X_test_scaled = scaler.transform(x_test)
 
+    '''
     print(x_train.dtypes)  # Shows the type of every column
     print(x_train.columns[-1])  # Name of the last column
     print(x_train[x_train.columns[-1]].dtype)  # dtype of the last column
     print(type(x_train[x_train.columns[-1]].iloc[0]))  # Python type of the first value in that column
+    '''
 
 
-    clf.fit(x_train, y_train)
-    print(clf.coef_, clf.intercept_)
-    y_pred = clf.predict(x_test)
+    clf.fit(X_train_scaled, y_train)
+    #print(clf.coef_, clf.intercept_)
+    y_pred = clf.predict(X_test_scaled)
 
     #print(np.unique(y_pred, return_counts=True))
+    '''
     print("Type of y_test:", type(y_test))
     print("y_test dtype:", getattr(y_test, 'dtype', None))  # works if y_test is a Series or ndarray
     print("Type of y_pred:", type(y_pred))
     print("y_pred dtype:", getattr(y_pred, 'dtype', None))  # works if y_pred is a Series or ndarray
+    '''
 
     TN, FP, FN, TP = confusion_matrix(y_test, y_pred).ravel()
     #print(f"confusion matrix -> TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")

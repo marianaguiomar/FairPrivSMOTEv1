@@ -22,18 +22,17 @@ from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
 from sklearn.model_selection import train_test_split
 
-import sklearn
-print(sklearn.__version__)
-
+'''
 import random
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
+'''
 
 import random
-print("Random sample sequence test:")
-for _ in range(5):
-    print(random.randint(0, 100))
+#print("Random sample sequence test:")
+#for _ in range(5):
+#    print(random.randint(0, 100))
 
 
 
@@ -42,10 +41,10 @@ k_values = [3,5]
 knn_values = [3,5]
 augmentation_values = [0.3, 0.4]
 per_values = [2, 3]
-#cr_values = [0.2, 0.5, 0.8]
-#f_values = [0.2, 0.5, 0.8]
-cr_values = [0.8]
-f_values = [0.8]
+cr_values = [0.2, 0.5, 0.8]
+f_values = [0.2, 0.5, 0.8]
+#cr_values = [0.8]
+#f_values = [0.8]
 
 #epsilon_values = [0.1]
 #k_values = [3]
@@ -181,14 +180,15 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
                                 df_subgroup['sex'] = df_subgroup['sex'].astype(str)
                                 df_balanced = generate_samples(to_be_increased, df_subgroup, columns=df_subgroup.columns, cr=cr, f=f)
                                 df_balanced = pd.DataFrame(df_balanced, columns=df_subgroup.columns)
-                                df_balanced.to_csv(f"df_{key}_generated_mine.csv", index=False)
+                                #df_balanced.to_csv(f"df_{key}_generated_mine.csv", index=False)
                                 # replace df_subgroup with generated
                                 if key == 'zero_zero': df_zero_zero = df_balanced
                                 elif key == 'one_zero': df_one_zero = df_balanced
                                 elif key == 'one_one': df_one_one = df_balanced
                                 elif key == 'zero_one': df_zero_one = df_balanced
                             else:
-                                df_subgroup.to_csv(f"df_{key}_generated_mine.csv", index=False)
+                                pass
+                                #df_subgroup.to_csv(f"df_{key}_generated_mine.csv", index=False)
 
                         # Concatenate in **explicit order** (matches original)
                         df = pd.concat([df_zero_zero, df_one_zero, df_one_one, df_zero_one], ignore_index=True)
@@ -197,21 +197,21 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
                         df['race'] = df['race'].astype(float)
                         df['sex'] = df['sex'].astype(float)
 
-                        df.to_csv("df_final_mine.csv", index=False)
+                        #df.to_csv("df_final_mine.csv", index=False)
 
                         # Save the dataset
                         output_file_name = f"{dataset_name}_cr{cr}_f{f}_fairSMOTE_{protected_attribute}.csv"
                         output_path = os.path.join(output_fold_folder, output_file_name)
                         df.to_csv(output_path, index=False)
 
-                        df = pd.read_csv("df_final_original.csv")
+                        #df = pd.read_csv("df_final_original.csv")
 
                         
 
                         X_train, y_train = df.loc[:, df.columns != 'Probability'], df['Probability']
                         X_test , y_test = dataset_test.loc[:, dataset_test.columns != 'Probability'], dataset_test['Probability']
 
-                        
+                        '''
                         print("Train columns:", list(X_train.columns))
                         print(X_train.dtypes)
                         print("Test columns:", list(X_test.columns))
@@ -226,15 +226,16 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
                         y_train.to_csv("debug_y_train_mine.csv", index=False)
                         X_test.to_csv("debug_X_test_mine.csv", index=False)
                         y_test.to_csv("debug_y_test_mine.csv", index=False)
+                        '''
 
                         clf = LogisticRegression(C=1.0, penalty='l2', solver='liblinear', max_iter=1000, random_state=42) # LSR
                         #clf = LinearSVC(C=1.0, max_iter=1000, random_state=42)
 
-                        print("recall :", measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column='Probability'))
-                        print("far :",measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far', class_column='Probability'))
-                        print("precision :", measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision', class_column='Probability'))
-                        print("accuracy :",measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy', class_column='Probability'))
-                        print("F1 Score :",measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1', class_column='Probability'))
+                        #print("recall :", measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column='Probability'))
+                        #print("far :",measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'far', class_column='Probability'))
+                        #print("precision :", measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'precision', class_column='Probability'))
+                        #print("accuracy :",measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'accuracy', class_column='Probability'))
+                        #print("F1 Score :",measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'F1', class_column='Probability'))
                         print("aod :"+protected_attribute,measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'aod', class_column='Probability'))
                         print("eod :"+protected_attribute,measure_final_score(dataset_test, clf, X_train, y_train, X_test, y_test, protected_attribute, 'eod', class_column='Probability'))
 
