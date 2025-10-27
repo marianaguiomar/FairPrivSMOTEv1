@@ -43,7 +43,7 @@ def fit_knn_numeric(df, n_neighbors=5):
     knn = NN(n_neighbors=n_neighbors, algorithm='auto').fit(df_encoded)
 
     return knn, df_encoded, ct
-'''
+
 def get_ngbr(df, df_encoded, knn):
     """Pick neighbors using encoded df, but return rows from original df."""
     rand_sample_idx = random.randint(0, df.shape[0] - 1)
@@ -57,6 +57,7 @@ def get_ngbr(df, df_encoded, knn):
     candidate_2 = df.iloc[ngbr[0][1]]
     candidate_3 = df.iloc[ngbr[0][2]]
     return parent_candidate, candidate_2, candidate_3
+
 '''
 def get_ngbr(df, knn):
             #random.seed(42)
@@ -67,6 +68,7 @@ def get_ngbr(df, knn):
             candidate_2 = df.iloc[ngbr[0][1]]
             candidate_3 = df.iloc[ngbr[0][2]]
             return rand_sample_idx, parent_candidate,candidate_2,candidate_3
+'''
 
 def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
     cr = 0.8
@@ -81,12 +83,12 @@ def generate_samples(no_of_samples, df, columns=None, cr=0.8, f=0.8):
             pass  # leave strings as-is
     knn = NN(n_neighbors=5,algorithm='auto').fit(df_knn.values)
     # Fit KNN on numeric representation
-    #knn, df_encoded, encoders = fit_knn_numeric(df, n_neighbors=5)
+    knn, df_encoded, encoders = fit_knn_numeric(df, n_neighbors=5)
 
 
     for _ in range(no_of_samples):
-        #parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, df_encoded, knn)
-        rand_sample_idx, parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, knn)
+        parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, df_encoded, knn)
+        #rand_sample_idx, parent_candidate, child_candidate_1, child_candidate_2 = get_ngbr(df, knn)
         new_candidate = []
 
         for key, value in parent_candidate.items():

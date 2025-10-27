@@ -79,6 +79,7 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
 
         ## Drop categorical features
         data = data.drop(['workclass','fnlwgt','education','marital-status','occupation','relationship','native-country'],axis=1)
+        #data = data.drop(['fnlwgt','education','marital-status','occupation','relationship','native-country'],axis=1)
 
         data['sex'] = np.where(data['sex'] == ' Male', 1, 0)
         data['race'] = np.where(data['race'] != ' White', 0, 1)
@@ -93,16 +94,21 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
         data['age'] = np.where((data['age'] >= 10 ) & (data['age'] < 10), 10, data['age'])
         data['age'] = np.where(data['age'] < 10, 0, data['age'])
 
-        #dataset_train, dataset_test = train_test_split(data, test_size=0.2, shuffle=True)
-        train_path = os.path.join(final_output_folder, f"{dataset_name}_train_split.csv")
-        test_path = os.path.join(final_output_folder, f"{dataset_name}_test_split.csv")
+        from sklearn.preprocessing import MinMaxScaler
+        scaler = MinMaxScaler()
+        #cols_to_scale = data.columns.difference(['workclass'])
+        #data[cols_to_scale] = scaler.fit_transform(data[cols_to_scale])
+        data = pd.DataFrame(scaler.fit_transform(data),columns = data.columns)
+
+        #train_path = os.path.join(final_output_folder, f"{dataset_name}_train_split.csv")
+        #test_path = os.path.join(final_output_folder, f"{dataset_name}_test_split.csv")
         #dataset_train.to_csv(train_path, index=False)
         #dataset_test.to_csv(test_path, index=False)
 
         #print(f"Saved split files:\n  Train: {train_path}\n  Test: {test_path}")
 
-        dataset_train = pd.read_csv(train_path)
-        dataset_test = pd.read_csv(test_path)
+        #dataset_train = pd.read_csv(train_path)
+        #dataset_test = pd.read_csv(test_path)
 
 
 
@@ -126,6 +132,7 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
             
             for cr in cr_values:
                 for f in f_values:
+                    dataset_train, dataset_test = train_test_split(data, test_size=0.2, shuffle=True)
                     #print(f"\nProcessing protected attribute: {protected_attribute}")
                     
                     # Count samples in each subgroup

@@ -43,9 +43,9 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
     print("Values equal:", (y_train_orig == y_train_new).all().all())
     '''
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(x_train)
-    X_test_scaled = scaler.transform(x_test)
+    #scaler = StandardScaler()
+    #X_train_scaled = scaler.fit_transform(x_train)
+    #X_test_scaled = scaler.transform(x_test)
 
     '''
     print(x_train.dtypes)  # Shows the type of every column
@@ -55,9 +55,9 @@ def get_counts(clf, x_train, y_train, x_test, y_test, test_df, biased_col, class
     '''
 
 
-    clf.fit(X_train_scaled, y_train)
+    clf.fit(x_train, y_train)
     #print(clf.coef_, clf.intercept_)
-    y_pred = clf.predict(X_test_scaled)
+    y_pred = clf.predict(x_test)
 
     #print(np.unique(y_pred, return_counts=True))
     '''
