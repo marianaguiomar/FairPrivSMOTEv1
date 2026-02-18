@@ -2,7 +2,8 @@
 import time
 import pandas as pd
 import argparse
-from anonymeter.evaluators import LinkabilityEvaluator
+from anonymeter.evaluators import LinkabilityEvaluator, SinglingOutEvaluator, InferenceEvaluator
+from pycanon import anonymity
 import os
 
 if __name__ == "__main__":
@@ -86,3 +87,58 @@ def linkability(orig_file, transf_file, control_file, key_vars, nqi_number):
     risk = pd.DataFrame({'value': evaluator.risk()[0], 'ci':[evaluator.risk()[1]]})
     print(risk)
     return value, ci
+
+
+def singling_out(orig_file, transf_file, control_file):
+    data = orig_file
+    transf_data = pd.read_csv(transf_file)
+    control_data = control_file
+
+    evaluator = SinglingOutEvaluator(
+        ori=data,
+        syn=transf_data,
+        n_attacks=300,
+        n_cols=3,
+        max_attempts=100_000
+    )
+
+    print("initiating singling out attack")    
+    start_time = time.time()
+    evaluator.evaluate(mode='univariate')
+    print("attack finished")
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(elapsed_time)
+
+
+    value, ci = evaluator.risk()
+    risk = pd.DataFrame({
+        'value': [value],
+        'ci': [ci]
+    })
+
+    print(risk)
+    return value, ci
+
+
+def calculate_k_anonymity(transf_file, key_vars):
+    """
+    Determines the k-anonymity level of the transformed dataset.
+    :param transf_file: Path to the anonymized CSV file.
+    :param key_vars: List of Quasi-Identifiers.
+    :return: The value of k.
+    """
+    # Load the transformed data
+    df = pd.read_csv(transf_file)
+    
+    print("Calculating k-anonymity...")
+    start_time = time.time()
+    
+    # pyCANON returns the maximum k for which the dataset is k-anonymous
+    k = anonymity.k_anonymity(df, key_vars)
+    
+    elapsed_time = time.time() - start_time
+    print(f"Calculation finished in {elapsed_time:.2f} seconds")
+    print(f"The dataset satisfies {k}-anonymity.")
+    
+    return k

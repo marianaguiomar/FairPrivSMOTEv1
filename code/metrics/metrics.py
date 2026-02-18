@@ -11,7 +11,7 @@ import numpy as np
 import sys 
 import itertools
 import subprocess
-from metrics.linkability import linkability
+from metrics.linkability import calculate_k_anonymity, linkability, singling_out
 from sdmetrics.single_table import BoundaryAdherence
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -53,8 +53,11 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         #print(f"key_vars: {key_vars[nqi]}")
 
         if not fair:
-            value, ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
+            linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
+            singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
+            k_value = calculate_k_anonymity(transf_file, key_vars[nqi])
 
+            '''
             # Compute Boundary Adherence
             try:
                 real_data = orig_file
@@ -64,13 +67,15 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
             except Exception as e:
                 print(f"Could not compute Boundary Adherence for {file}: {e}")
                 boundary_score = None
+                '''
 
-            results.append({"file":file, "value": value, "ci": ci, "boundary_adherence": boundary_score})
+            results.append({"file":file, "k_anonymity": k_value, "linkability_value": linkability_value, "linkability_ci": tuple(map(float, linkability_ci)), "singling_out_value": singlingout_value, "singling_out_ci": tuple(map(float, singlingout_ci))})
 
         if fair:
             for fair_nqi in range(5):
-                value, ci = linkability(orig_file, transf_file, control_file, key_vars[fair_nqi], fair_nqi)
-
+                linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, key_vars[fair_nqi], fair_nqi)
+                singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
+                '''
                 # Compute Boundary Adherence
                 try:
                     real_data = orig_file
@@ -80,8 +85,9 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                 except Exception as e:
                     print(f"Could not compute Boundary Adherence for {file}: {e}")
                     boundary_score = None
+                    '''
 
-                results.append({"file":f"{file}_QI{fair_nqi}.csv", "value": value, "ci": ci, "boundary_adherence": boundary_score})
+                results.append({"file":f"{file}_QI{fair_nqi}.csv", "k_anonymity": k_value, "linkability_value": linkability_value, "linkability_ci": tuple(map(float, linkability_ci)), "singling_out_value": singlingout_value, "singling_out_ci": tuple(map(float, singlingout_ci))})
 
 
 
@@ -99,68 +105,85 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
     return output_csv
 
 def average_linkability(folder_path, combined_file_path, std=False):
-    """
-    Calculate the average risk and confidence intervals (CI) from a combined results CSV file.
-    
-    Parameters:
-    - combined_file_path (str): The path to the combined result CSV file containing 'value' and 'ci' columns.
-    - std (bool, optional): Whether to calculate standard deviations. Default is False (does not calculate std).
-    
-    Returns:
-    - dict: A dictionary containing the folder name, average risk, lower CI bound, upper CI bound, 
-            and optionally standard deviations if std=True.
-    """
+
     print(combined_file_path)
-    # Read the combined result CSV file
+
     if os.path.exists(combined_file_path):
         df = pd.read_csv(combined_file_path)
-        
-        if 'value' in df.columns and 'ci' in df.columns:
-            # Extract values and confidence intervals
-            total_values = df['value'].tolist()
-            ci_values = df['ci'].apply(ast.literal_eval)  
-            
-            # Separate the CI into lower and upper bounds
-            lower_bounds = ci_values.apply(lambda x: x[0]).tolist()
-            upper_bounds = ci_values.apply(lambda x: x[1]).tolist()
-            
-            # Calculate averages
-            average_risk = np.mean(total_values)
-            average_ci_lower = np.mean(lower_bounds) if lower_bounds else 0
-            average_ci_upper = np.mean(upper_bounds) if upper_bounds else 0
-            if 'boundary_adherence' in df.columns and not df['boundary_adherence'].isnull().all():
-                average_boundary = df['boundary_adherence'].mean()
-            else:
-                average_boundary = 0
 
+        required_cols = [
+            'k_anonymity',
+            'linkability_value', 'linkability_ci',
+            'singling_out_value', 'singling_out_ci'
+        ]
+
+        if all(col in df.columns for col in required_cols):
+
+            # ---------- LINKABILITY ----------
+            link_values = df['linkability_value'].tolist()
+            link_ci = df['linkability_ci'].apply(ast.literal_eval)
+
+            link_lower = link_ci.apply(lambda x: x[0]).tolist()
+            link_upper = link_ci.apply(lambda x: x[1]).tolist()
+
+            avg_link = np.mean(link_values)
+            avg_link_lower = np.mean(link_lower)
+            avg_link_upper = np.mean(link_upper)
+
+            # ---------- SINGLING OUT ----------
+            sing_values = df['singling_out_value'].tolist()
+            sing_ci = df['singling_out_ci'].apply(ast.literal_eval)
+
+            sing_lower = sing_ci.apply(lambda x: x[0]).tolist()
+            sing_upper = sing_ci.apply(lambda x: x[1]).tolist()
+
+            avg_sing = np.mean(sing_values)
+            avg_sing_lower = np.mean(sing_lower)
+            avg_sing_upper = np.mean(sing_upper)
             
-            # Calculate standard deviations if std=True
+            # ---------- K-ANONYMITY ----------
+            k_values = df['k_anonymity'].tolist()
+            avg_k = np.mean(k_values)
+
             if std:
-                std_risk = np.std(total_values, ddof=1)  # Use ddof=1 for sample std
-                std_ci_lower = np.std(lower_bounds, ddof=1) if lower_bounds else 0
-                std_ci_upper = np.std(upper_bounds, ddof=1) if upper_bounds else 0
+                std_k = np.std(k_values, ddof=1)
+
+            if std:
                 result = {
-                    #"folder_name": folder_path,
-                    "average_risk": average_risk,
-                    "std_risk": std_risk,
-                    "average_ci_lower": average_ci_lower,
-                    "average_ci_upper": average_ci_upper,
-                    "std_ci_lower": std_ci_lower,
-                    "std_ci_upper": std_ci_upper,
+                    "average_k_anonymity": avg_k,
+                    "std_k_anonymity": std_k,
+                    
+                    "average_linkability": avg_link,
+                    "std_linkability": np.std(link_values, ddof=1),
+                    "average_linkability_ci_lower": avg_link_lower,
+                    "average_linkability_ci_upper": avg_link_upper,
+                    "std_linkability_ci_lower": np.std(link_lower, ddof=1),
+                    "std_linkability_ci_upper": np.std(link_upper, ddof=1),
+
+                    "average_singling_out": avg_sing,
+                    "std_singling_out": np.std(sing_values, ddof=1),
+                    "average_singling_ci_lower": avg_sing_lower,
+                    "average_singling_ci_upper": avg_sing_upper,
+                    "std_singling_ci_lower": np.std(sing_lower, ddof=1),
+                    "std_singling_ci_upper": np.std(sing_upper, ddof=1),
                 }
             else:
                 result = {
-                    #"folder_name": folder_path,
-                    "average_risk": average_risk,
-                    "average_ci_lower": average_ci_lower,
-                    "average_ci_upper": average_ci_upper,
-                    "average_boundary_adherence": average_boundary,
-                }
+                    "average_k_anonymity": avg_k,
+                    
+                    "average_linkability": avg_link,
+                    "average_linkability_ci_lower": avg_link_lower,
+                    "average_linkability_ci_upper": avg_link_upper,
 
+                    "average_singling_out": avg_sing,
+                    "average_singling_ci_lower": avg_sing_lower,
+                    "average_singling_ci_upper": avg_sing_upper,
+                }
 
             return result
+
         else:
-            print(f"Warning: 'value' or 'ci' columns not found in {combined_file_path}")
+            print(f"Warning: Required columns not found in {combined_file_path}")
             return None
     else:
         print(f"Warning: Combined file {combined_file_path} not found.")
@@ -202,19 +225,28 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
         result["folder_name"] = folder_name
         all_results.append(result)
 
+    '''
     # Ensure 'average_boundary_adherence' is always present
     if "average_boundary_adherence" not in result:
         result["average_boundary_adherence"] = 0
+    '''
 
     # Determine the fieldnames based on whether 'std' is True or False
     if std:
-        fieldnames = ["folder_name", "average_risk", "std_risk", 
-                      "average_ci_lower", "average_ci_upper", 
-                      "std_ci_lower", "std_ci_upper"]
+        fieldnames = ["folder_name", 
+                      "average_k_anonymity", "std_k_anonymity",
+                      "average_linkability", "std_linkability", 
+                      "average_linkability_ci_lower", "average_linkability_ci_upper", 
+                      "std_linkability_ci_lower", "std_linkability_ci_upper",
+                      "average_singling_out", "std_singling_out",
+                      "average_singling_ci_lower", "average_singling_ci_upper",
+                      "std_singling_ci_lower", "std_singling_ci_upper"]
     else:
-        fieldnames = ["folder_name", "average_risk", 
-                      "average_ci_lower", "average_ci_upper",  "average_boundary_adherence"]
+        fieldnames = ["folder_name", "average_k_anonymity",
+                      "average_linkability", "average_linkability_ci_lower", "average_linkability_ci_upper",
+                      "average_singling_out", "average_singling_ci_lower", "average_singling_ci_upper"]
     
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     file_exists = os.path.exists(output_file)
     # Write the results to a CSV file
     with open(output_file, mode='a', newline='') as file:
@@ -400,7 +432,4 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
 
 #process_linkability("datasets/outputs/outputs_3/others", "priv")
 #process_fairness("datasets/outputs/outputs_3/others")
-
-
-
 

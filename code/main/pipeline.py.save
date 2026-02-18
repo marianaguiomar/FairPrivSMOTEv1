@@ -1,4 +1,3 @@
-
 import subprocess
 import argparse
 import os
@@ -98,11 +97,10 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         knn=knn,
                                         augmentation_rate=augmentation_rate)
                                         '''
-                                     
                                     invalid = False
             if not invalid:
-                process_fairness(output_fold_folder, test_data, output_file=f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv", protected_attribute=protected_attribute)
-                process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
+                process_fairness(output_fold_folder, test_data)
+                #process_linkability(output_fold_folder, train_data, test_data)
 
 def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, per_values, final_folder_name):
     # creating output folder
@@ -139,7 +137,7 @@ def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, p
                     for k in k_values:
                         for knn in knn_values:
                             for per in per_values:
-                                print("")
+                                #print("")
                                 
                                 apply_original_private_smote(
                                     data=train_data,
@@ -152,7 +150,7 @@ def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, p
                                     output_folder=output_fold_folder,
                                     nqi=ix
                                 )
-                               
+                                
             
             for protected_attribute in protected_attribute_list:
                 process_fairness(output_fold_folder, test_data, output_file="results_metrics/fairness_results/fairness_intermediate_original.csv", original=True, protected_attribute=protected_attribute)
@@ -251,10 +249,8 @@ def run_original_fairsmote(input_folder, final_folder_name):
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
 
-input_folder_name = "RF_57"
-final_folder_name = "RF_57"
-#input_folder_name = "privacy_test"
-#final_folder_name = "privacy_test"
+input_folder_name = "test"
+final_folder_name = "test"
 method_number = "3"
 
 ### MY SMOTE ###

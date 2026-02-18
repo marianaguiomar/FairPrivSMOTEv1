@@ -12,6 +12,8 @@ from xgboost import XGBClassifier
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 
 
 
@@ -118,12 +120,12 @@ def calculate_average_odds_difference(a, b, c, d, e, f, g, h):
 def calculate_Disparate_Impact(a, b, c, d, e, f, g, h):
     P_male = (a + d) / (a + b + c + d)
     P_female = (e + h) / (e + f + g + h)
-    return round(1 - abs(P_female / P_male), 2)
+    return round(P_female / P_male, 2)
 
 def calculate_SPD(a, b, c, d, e, f, g, h):
     P_male = (a + d) / (a + b + c + d)
     P_female = (e + h) / (e + f + g + h)
-    return round(abs(P_female - P_male), 2)
+    return round(P_female - P_male, 2)
 
 def calculate_equal_opportunity_difference(a, b, c, d, e, f, g, h):
     return calculate_TPR_difference(a, b, c, d, e, f, g, h)
@@ -195,18 +197,58 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
 
     # Fit model
     # Create a pipeline with preprocessing + XGBoost model
+    '''
+    clf = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', LogisticRegression(
+            solver='liblinear',   # works well for small/medium datasets
+            penalty='l2',
+            C=1.0,
+            max_iter=100
+        ))
+    ])
+    '''
+    '''
     clf = Pipeline(steps=[
         ('preprocessor', preprocessor),
         ('classifier', XGBClassifier(
             objective='binary:logistic',
             eval_metric='logloss',
             scale_pos_weight=(y_train.value_counts()[0] / y_train.value_counts()[1]),
+            random_state=57
+        ))
+    ])
+    '''
+    
+    clf = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier(
+        n_estimators=200,
+        max_depth=None,
+        min_samples_split=2,
+        min_samples_leaf=1,
+        class_weight='balanced',  # important for fairness / imbalance
+        random_state=57,
+        n_jobs=-1
+        ))
+    ])
+    
+    '''
+    clf = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('scaler', StandardScaler()),   # VERY important for SVM
+        ('classifier', SVC(
+            kernel='linear',
+            C=1.0,
+            class_weight='balanced',
             random_state=42
         ))
     ])
-    clf.fit(X_train, y_train)
+    '''
+    
+    #clf.fit(X_train, y_train)
 
-    y_pred = clf.predict(X_test)
+    #y_pred = clf.predict(X_test)
     return {
         "File": file_path,
         "Recall": measure_final_score(test_fold, clf, X_train, y_train, X_test, y_test, protected_attribute, 'recall', class_column),

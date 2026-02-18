@@ -224,7 +224,7 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
 
                         if all(len(df_subgroup) >= 3 for df_subgroup in df_dict.values()):
                             df_balanced_parts = []
-
+                            '''
                             for key, df_subgroup in df_dict.items():
                                 to_be_increased = maximum - len(df_subgroup)
                                 #print(f"\nSubgroup '{key}' - current size: {len(df_subgroup)}, needs: {to_be_increased}")
@@ -252,13 +252,13 @@ def run_original_fairsmote(input_folder, cr_values, f_values, final_folder_name)
                                 print(f"Saved balanced dataset to {output_path}")
                             else:
                                 print("No valid data to save after balancing.")
+                                '''
                         else:
                             print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
                             invalid = True
-                
                 if not invalid:
                     process_fairness(output_fold_folder, test_data, output_file="results_metrics/fairness_results/fairness_intermediate_fair.csv", fair=True)
-                    process_linkability(output_fold_folder, train_data, test_data, "results_metrics/linkability_results/linkability_intermediate_fair.csv", fair=True)
+                    #process_linkability(output_fold_folder, train_data, test_data, "results_metrics/linkability_results/linkability_intermediate_fair.csv", fair=True)
 
 
 input_folder_name = "test"
@@ -339,5 +339,4 @@ features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_p
 for feature_name in features_fairness:
     plot_feature_across_files(folder_path_fairness, feature_name)
 plot_feature_across_files(folder_path_linkability, "value")
-
 '''
