@@ -87,10 +87,12 @@ node_modules/
 datasets/
 results_metrics/
 results_metrics_2025/
+helper_images/
 
 class_attribute.csv
 key_vars.csv
 protected_attributes.csv
+sensitive_attribute.csv
 
 
 priv39/
