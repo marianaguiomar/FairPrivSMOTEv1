@@ -195,12 +195,14 @@ class newPrivateSMOTE:
 
         if np.any(self.is_object_type):
             new = self.decode_categorical_columns(new)
-        
+                    
+        '''
         # Concatenate highest and non-highest-risk samples
         if self.X_train_shape[0] != self.samples.shape[0]:
             new = pd.concat([new, self.samples.loc[
                 self.samples['highest_risk']== 0]])
-
+        '''
+            
         return new
 
     def _populate(self, N, i, nnarray):
