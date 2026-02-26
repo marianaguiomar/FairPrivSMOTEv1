@@ -11,11 +11,11 @@ import numpy as np
 import sys 
 import itertools
 import subprocess
-from metrics.linkability import calculate_k_anonymity, linkability, singling_out
+from metrics.linkability import linkability, singling_out, calculate_k_anonymity, calculate_l_diversity, calculate_t_closeness, calculate_beta_likeness
 from sdmetrics.single_table import BoundaryAdherence
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter
+from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter, process_sensitive_attributes
 
 # ------ LINKABILITY ------
 def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = False, fair=False):
@@ -43,6 +43,7 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         ds = ds_match.group(1) if ds_match else None
 
         key_vars = get_key_vars(ds, "key_vars.csv")
+        sensitive_attibute = process_sensitive_attributes(ds, "sensitive_attribute.csv")
 
         orig_file = train_fold_path
         transf_file = os.path.join(transf_folder_path, file)
@@ -55,7 +56,11 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         if not fair:
             linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
             singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
+            
             k_value = calculate_k_anonymity(transf_file, key_vars[nqi])
+            l_value = calculate_l_diversity(transf_file, key_vars[nqi], sensitive_attibute)
+            t_value = calculate_t_closeness(transf_file, key_vars[nqi], sensitive_attibute)
+            b_value = calculate_beta_likeness(transf_file, key_vars[nqi], sensitive_attibute)
 
             '''
             # Compute Boundary Adherence
@@ -69,7 +74,17 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                 boundary_score = None
                 '''
 
-            results.append({"file":file, "k_anonymity": k_value, "linkability_value": linkability_value, "linkability_ci": tuple(map(float, linkability_ci)), "singling_out_value": singlingout_value, "singling_out_ci": tuple(map(float, singlingout_ci))})
+            results.append({"file":file,
+                            "linkability_value": linkability_value,
+                            "linkability_ci": tuple(map(float, linkability_ci)),
+                            "singling_out_value": singlingout_value,
+                            "singling_out_ci": tuple(map(float, singlingout_ci)),
+                            "k_anonymity": k_value, 
+                            "l_diversity": l_value,
+                            "t_closeness": t_value,
+                            "beta_likeness": b_value
+                            })
+
 
         if fair:
             for fair_nqi in range(5):
@@ -87,7 +102,16 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                     boundary_score = None
                     '''
 
-                results.append({"file":f"{file}_QI{fair_nqi}.csv", "k_anonymity": k_value, "linkability_value": linkability_value, "linkability_ci": tuple(map(float, linkability_ci)), "singling_out_value": singlingout_value, "singling_out_ci": tuple(map(float, singlingout_ci))})
+                results.append({"file":f"{file}_QI{fair_nqi}.csv",
+                                "linkability_value": linkability_value,
+                                "linkability_ci": tuple(map(float, linkability_ci)),
+                                "singling_out_ci": tuple(map(float, singlingout_ci)),
+                                "k_anonymity": k_value,
+                                "l_diversity": l_value,
+                                "t_closeness": t_value,
+                                "beta_likeness": b_value
+                                })
+
 
 
 
@@ -112,9 +136,9 @@ def average_linkability(folder_path, combined_file_path, std=False):
         df = pd.read_csv(combined_file_path)
 
         required_cols = [
-            'k_anonymity',
             'linkability_value', 'linkability_ci',
-            'singling_out_value', 'singling_out_ci'
+            'singling_out_value', 'singling_out_ci',
+            'k_anonymity', 'l_diversity', 't_closeness', 'beta_likeness'
         ]
 
         if all(col in df.columns for col in required_cols):
@@ -144,15 +168,29 @@ def average_linkability(folder_path, combined_file_path, std=False):
             # ---------- K-ANONYMITY ----------
             k_values = df['k_anonymity'].tolist()
             avg_k = np.mean(k_values)
-
             if std:
                 std_k = np.std(k_values, ddof=1)
+                
+            # ---------- L-DIVERSITY ----------
+            l_values = df['l_diversity'].tolist()
+            avg_l = np.mean(l_values)
+            if std:
+                std_l = np.std(l_values, ddof=1)
+                
+            # ---------- T-CLOSENESS ----------
+            t_values = df['t_closeness'].tolist()
+            avg_t = np.mean(t_values)
+            if std:
+                std_t = np.std(t_values, ddof=1)
+                
+            # ---------- BETA-LIKENESS ----------
+            b_values = df['beta_likeness'].tolist()
+            avg_b = np.mean(b_values)
+            if std:
+                std_b = np.std(b_values, ddof=1)
 
             if std:
                 result = {
-                    "average_k_anonymity": avg_k,
-                    "std_k_anonymity": std_k,
-                    
                     "average_linkability": avg_link,
                     "std_linkability": np.std(link_values, ddof=1),
                     "average_linkability_ci_lower": avg_link_lower,
@@ -166,11 +204,18 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_singling_ci_upper": avg_sing_upper,
                     "std_singling_ci_lower": np.std(sing_lower, ddof=1),
                     "std_singling_ci_upper": np.std(sing_upper, ddof=1),
+                    
+                    "average_k_anonymity": avg_k,
+                    "std_k_anonymity": std_k,
+                    "average_l_diversity": avg_l,
+                    "std_l_diversity": std_l,
+                    "average_t_closeness": avg_t,
+                    "std_t_closeness": std_t,
+                    "average_beta_likeness": avg_b,
+                    "std_beta_likeness": std_b,
                 }
             else:
                 result = {
-                    "average_k_anonymity": avg_k,
-                    
                     "average_linkability": avg_link,
                     "average_linkability_ci_lower": avg_link_lower,
                     "average_linkability_ci_upper": avg_link_upper,
@@ -178,6 +223,11 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_singling_out": avg_sing,
                     "average_singling_ci_lower": avg_sing_lower,
                     "average_singling_ci_upper": avg_sing_upper,
+                    
+                    "average_k_anonymity": avg_k,
+                    "average_l_diversity": avg_l,
+                    "average_t_closeness": avg_t,
+                    "average_beta_likeness": avg_b,
                 }
 
             return result
@@ -234,17 +284,23 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
     # Determine the fieldnames based on whether 'std' is True or False
     if std:
         fieldnames = ["folder_name", 
-                      "average_k_anonymity", "std_k_anonymity",
                       "average_linkability", "std_linkability", 
                       "average_linkability_ci_lower", "average_linkability_ci_upper", 
                       "std_linkability_ci_lower", "std_linkability_ci_upper",
                       "average_singling_out", "std_singling_out",
                       "average_singling_ci_lower", "average_singling_ci_upper",
-                      "std_singling_ci_lower", "std_singling_ci_upper"]
+                      "std_singling_ci_lower", "std_singling_ci_upper",
+                      "average_k_anonymity", "std_k_anonymity",
+                      "average_l_diversity", "std_l_diversity",
+                      "average_t_closeness", "std_t_closeness",
+                      "average_beta_likeness", "std_beta_likeness"
+                    ]
     else:
-        fieldnames = ["folder_name", "average_k_anonymity",
+        fieldnames = ["folder_name", 
                       "average_linkability", "average_linkability_ci_lower", "average_linkability_ci_upper",
-                      "average_singling_out", "average_singling_ci_lower", "average_singling_ci_upper"]
+                      "average_singling_out", "average_singling_ci_lower", "average_singling_ci_upper",
+                      "average_k_anonymity", "average_l_diversity", "average_t_closeness", "average_beta_likeness"
+                      ]
     
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     file_exists = os.path.exists(output_file)

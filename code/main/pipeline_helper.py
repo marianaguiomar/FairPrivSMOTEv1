@@ -80,6 +80,42 @@ def process_protected_attributes(file_name, protected_attributes_file_path):
 
     return protected_attr_dict[file_name]
 
+def process_sensitive_attributes(file_name, sensitive_attributes_file_path):
+    '''
+    Loads the sensitive attributes from a CSV file. 
+    Returns the list of sensitive attributes for the given file_name.
+    '''
+    with open(sensitive_attributes_file_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header
+        
+        for row in reader:
+            if not row:
+                continue
+                
+            file_id = row[0].strip()
+            
+            # If we found the specific file we are looking for
+            if file_id == file_name:
+                raw_value = row[1].strip()
+                
+                try:
+                    # ast.literal_eval safely converts "[a, b]" string to ['a', 'b'] list
+                    sensitive_list = ast.literal_eval(raw_value)
+                    
+                    if isinstance(sensitive_list, list):
+                        return sensitive_list
+                    else:
+                        # Fallback if it's a single string not in a list
+                        return [str(sensitive_list)]
+                        
+                except (ValueError, SyntaxError):
+                    # Manual fallback if the string is formatted poorly
+                    sanitized = raw_value.strip("[]")
+                    return [item.strip() for item in sanitized.split(",") if item.strip()]
+
+
+
 def get_class_column(file_name, class_column_file):
     '''
     Loads the class column from a CSV file and returns the corresponding class column 

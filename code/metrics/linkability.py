@@ -142,3 +142,63 @@ def calculate_k_anonymity(transf_file, key_vars):
     print(f"The dataset satisfies {k}-anonymity.")
     
     return k
+
+def calculate_l_diversity(transf_file, key_vars, sensitive_vars):
+    """
+    Determines the l-diversity level of the transformed dataset.
+    :param transf_file: Path to the anonymized CSV file.
+    :param key_vars: List of Quasi-Identifiers.
+    :param sensitive_vars: List of Sensitive Attributes.
+    :return: The value of l.
+    """
+    df = pd.read_csv(transf_file)
+    print(f"Calculating l-diversity for {sensitive_vars}...")
+    start_time = time.time()
+    
+    # Returns the maximum l for which l-diversity is satisfied
+    l = anonymity.l_diversity(df, key_vars, sensitive_vars)
+    
+    elapsed_time = time.time() - start_time
+    print(f"Calculation finished in {elapsed_time:.2f} seconds")
+    print(f"The dataset satisfies {l}-diversity.")
+    return l
+
+def calculate_t_closeness(transf_file, key_vars, sensitive_vars):
+    """
+    Determines the t-closeness level of the transformed dataset.
+    :param transf_file: Path to the anonymized CSV file.
+    :param key_vars: List of Quasi-Identifiers.
+    :param sensitive_vars: List of Sensitive Attributes.
+    :return: The value of t.
+    """
+    df = pd.read_csv(transf_file)
+    print(f"Calculating t-closeness for {sensitive_vars}...")
+    start_time = time.time()
+    
+    # Returns the maximum t for which t-closeness is satisfied
+    t = anonymity.t_closeness(df, key_vars, sensitive_vars)
+    
+    elapsed_time = time.time() - start_time
+    print(f"Calculation finished in {elapsed_time:.2f} seconds")
+    print(f"The dataset satisfies {t:.4f}-closeness.")
+    return t
+
+def calculate_beta_likeness(transf_file, key_vars, sensitive_vars):
+    """
+    Determines the basic beta-likeness level of the transformed dataset.
+    :param transf_file: Path to the anonymized CSV file.
+    :param key_vars: List of Quasi-Identifiers.
+    :param sensitive_vars: List of Sensitive Attributes.
+    :return: The value of beta.
+    """
+    df = pd.read_csv(transf_file)
+    print(f"Calculating basic beta-likeness for {sensitive_vars}...")
+    start_time = time.time()
+    
+    # pycanon implementation for basic beta-likeness
+    beta = anonymity.basic_beta_likeness(df, key_vars, sensitive_vars)
+    
+    elapsed_time = time.time() - start_time
+    print(f"Calculation finished in {elapsed_time:.2f} seconds")
+    print(f"The dataset satisfies {beta:.4f}-likeness.")
+    return beta
