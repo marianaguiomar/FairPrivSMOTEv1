@@ -390,15 +390,15 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
             else:
                 file_metrics = {"File": f"{file_name}_{protected_attribute}"}
 
-            for metric, value in fairness_metrics.items():
-                if metric in total_metrics and not (math.isnan(value) or math.isinf(value)):
-                    total_metrics[metric] += value
-                    count_metrics[metric] += 1
-                    metric_values[metric].append(value)
-                    file_metrics[metric] = value
+            for result_dict in fairness_metrics:  # iterate over list of dicts
+                all_fairness_metrics.append(result_dict)
+                for metric, value in result_dict.items():
+                    if metric in total_metrics and not (math.isnan(value) or math.isinf(value)):
+                        total_metrics[metric] += value
+                        count_metrics[metric] += 1
+                        metric_values[metric].append(value)
             
             total_files += 1
-            all_fairness_metrics.append(file_metrics)
 
     if total_files == 0:
         return {"folder_name": input_folder, **{metric + "_avg": 0 for metric in metrics}}
