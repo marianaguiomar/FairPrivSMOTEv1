@@ -84,6 +84,9 @@ def process_sensitive_attributes(file_name, sensitive_attributes_file_path):
     '''
     Loads the sensitive attributes from a CSV file. 
     Returns the list of sensitive attributes for the given file_name.
+    
+    Expected format: CSV with columns [file, sensitive_attribute]
+    where sensitive_attribute is formatted as "['attr1','attr2','attr3']" (valid Python list literal)
     '''
     with open(sensitive_attributes_file_path, newline='', encoding='utf-8') as csvfile:
         reader = csv.reader(csvfile)
@@ -100,19 +103,18 @@ def process_sensitive_attributes(file_name, sensitive_attributes_file_path):
                 raw_value = row[1].strip()
                 
                 try:
-                    # ast.literal_eval safely converts "[a, b]" string to ['a', 'b'] list
+                    # ast.literal_eval safely converts "['attr1','attr2']" string to ['attr1', 'attr2'] list
                     sensitive_list = ast.literal_eval(raw_value)
                     
                     if isinstance(sensitive_list, list):
                         return sensitive_list
                     else:
-                        # Fallback if it's a single string not in a list
-                        return [str(sensitive_list)]
+                        raise ValueError(f"Invalid sensitive_attribute format for file {file_id}: {raw_value} (not a list)")
                         
-                except (ValueError, SyntaxError):
-                    # Manual fallback if the string is formatted poorly
-                    sanitized = raw_value.strip("[]")
-                    return [item.strip() for item in sanitized.split(",") if item.strip()]
+                except (ValueError, SyntaxError) as e:
+                    raise ValueError(f"Error parsing sensitive_attribute for file {file_id}: {raw_value}\n{e}")
+    
+    raise ValueError(f"Error: No sensitive_attribute found for file {file_name}")
 
 
 
