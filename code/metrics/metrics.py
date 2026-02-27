@@ -52,15 +52,29 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         #print(f"transf file: {transf_file}")
 
         #print(f"key_vars: {key_vars[nqi]}")
+        
+        qi_list = key_vars[nqi]
+        qi_set = set(qi_list)
+        sa_set = set(sensitive_attibute)
+        filtered_sa = list(sa_set - qi_set)
 
         if not fair:
-            linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, key_vars[nqi], nqi)
+            linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, qi_list, nqi)
             singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
             
-            k_value = calculate_k_anonymity(transf_file, key_vars[nqi])
-            l_value = calculate_l_diversity(transf_file, key_vars[nqi], sensitive_attibute)
-            t_value = calculate_t_closeness(transf_file, key_vars[nqi], sensitive_attibute)
-            b_value = calculate_beta_likeness(transf_file, key_vars[nqi], sensitive_attibute)
+            df = pd.read_csv(transf_file)
+            k_value = calculate_k_anonymity(df, qi_list)
+            l_values = calculate_l_diversity(df, qi_list, filtered_sa)
+            t_values = calculate_t_closeness(df, qi_list, filtered_sa)
+            b_values = calculate_beta_likeness(df, qi_list, filtered_sa)
+
+            # Pad to length 3
+            while len(l_values) < 3:
+                l_values.append(np.nan)
+            while len(t_values) < 3:
+                t_values.append(np.nan)
+            while len(b_values) < 3:
+                b_values.append(np.nan)
 
             '''
             # Compute Boundary Adherence
@@ -79,14 +93,25 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                             "linkability_ci": tuple(map(float, linkability_ci)),
                             "singling_out_value": singlingout_value,
                             "singling_out_ci": tuple(map(float, singlingout_ci)),
+                            
                             "k_anonymity": k_value, 
-                            "l_diversity": l_value,
-                            "t_closeness": t_value,
-                            "beta_likeness": b_value
+                            
+                            "l_diversity_sa0": l_values[0],
+                            "l_diversity_sa1": l_values[1],
+                            "l_diversity_sa2": l_values[2],
+                            
+                            "t_closeness_sa0": t_values[0],
+                            "t_closeness_sa1": t_values[1],
+                            "t_closeness_sa2": t_values[2],
+                            
+                            "beta_likeness_sa0": b_values[0],
+                            "beta_likeness_sa1": b_values[1],
+                            "beta_likeness_sa2": b_values[2],
                             })
 
 
         if fair:
+            #TODO fix this for the new metrics
             for fair_nqi in range(5):
                 linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, key_vars[fair_nqi], fair_nqi)
                 singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
@@ -107,9 +132,9 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                                 "linkability_ci": tuple(map(float, linkability_ci)),
                                 "singling_out_ci": tuple(map(float, singlingout_ci)),
                                 "k_anonymity": k_value,
-                                "l_diversity": l_value,
-                                "t_closeness": t_value,
-                                "beta_likeness": b_value
+                                "l_diversity": l_values[0],
+                                "t_closeness": t_values[0],
+                                "beta_likeness": b_values[0]
                                 })
 
 
@@ -138,7 +163,10 @@ def average_linkability(folder_path, combined_file_path, std=False):
         required_cols = [
             'linkability_value', 'linkability_ci',
             'singling_out_value', 'singling_out_ci',
-            'k_anonymity', 'l_diversity', 't_closeness', 'beta_likeness'
+            'k_anonymity',
+            'l_diversity_sa0', 'l_diversity_sa1', 'l_diversity_sa2',
+            't_closeness_sa0', 't_closeness_sa1', 't_closeness_sa2',
+            'beta_likeness_sa0', 'beta_likeness_sa1', 'beta_likeness_sa2'
         ]
 
         if all(col in df.columns for col in required_cols):
@@ -172,23 +200,20 @@ def average_linkability(folder_path, combined_file_path, std=False):
                 std_k = np.std(k_values, ddof=1)
                 
             # ---------- L-DIVERSITY ----------
-            l_values = df['l_diversity'].tolist()
-            avg_l = np.mean(l_values)
-            if std:
-                std_l = np.std(l_values, ddof=1)
+            avg_l0 = np.nanmean(df['l_diversity_sa0'])
+            avg_l1 = np.nanmean(df['l_diversity_sa1'])
+            avg_l2 = np.nanmean(df['l_diversity_sa2'])
                 
             # ---------- T-CLOSENESS ----------
-            t_values = df['t_closeness'].tolist()
-            avg_t = np.mean(t_values)
-            if std:
-                std_t = np.std(t_values, ddof=1)
+            avg_t0 = np.nanmean(df['t_closeness_sa0'])
+            avg_t1 = np.nanmean(df['t_closeness_sa1'])
+            avg_t2 = np.nanmean(df['t_closeness_sa2'])
                 
             # ---------- BETA-LIKENESS ----------
-            b_values = df['beta_likeness'].tolist()
-            avg_b = np.mean(b_values)
-            if std:
-                std_b = np.std(b_values, ddof=1)
-
+            avg_b0 = np.nanmean(df['beta_likeness_sa0'])
+            avg_b1 = np.nanmean(df['beta_likeness_sa1'])
+            avg_b2 = np.nanmean(df['beta_likeness_sa2'])
+            
             if std:
                 result = {
                     "average_linkability": avg_link,
@@ -207,12 +232,18 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     
                     "average_k_anonymity": avg_k,
                     "std_k_anonymity": std_k,
-                    "average_l_diversity": avg_l,
-                    "std_l_diversity": std_l,
-                    "average_t_closeness": avg_t,
-                    "std_t_closeness": std_t,
-                    "average_beta_likeness": avg_b,
-                    "std_beta_likeness": std_b,
+                    
+                    "average_l_diversity_sa0": avg_l0,
+                    "average_l_diversity_sa1": avg_l1,
+                    "average_l_diversity_sa2": avg_l2,
+
+                    "average_t_closeness_sa0": avg_t0,
+                    "average_t_closeness_sa1": avg_t1,
+                    "average_t_closeness_sa2": avg_t2,
+
+                    "average_beta_likeness_sa0": avg_b0,
+                    "average_beta_likeness_sa1": avg_b1,
+                    "average_beta_likeness_sa2": avg_b2,
                 }
             else:
                 result = {
@@ -225,9 +256,18 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_singling_ci_upper": avg_sing_upper,
                     
                     "average_k_anonymity": avg_k,
-                    "average_l_diversity": avg_l,
-                    "average_t_closeness": avg_t,
-                    "average_beta_likeness": avg_b,
+                    
+                    "average_l_diversity_sa0": avg_l0,
+                    "average_l_diversity_sa1": avg_l1,
+                    "average_l_diversity_sa2": avg_l2,
+
+                    "average_t_closeness_sa0": avg_t0,
+                    "average_t_closeness_sa1": avg_t1,
+                    "average_t_closeness_sa2": avg_t2,
+
+                    "average_beta_likeness_sa0": avg_b0,
+                    "average_beta_likeness_sa1": avg_b1,
+                    "average_beta_likeness_sa2": avg_b2,
                 }
 
             return result
@@ -291,15 +331,18 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
                       "average_singling_ci_lower", "average_singling_ci_upper",
                       "std_singling_ci_lower", "std_singling_ci_upper",
                       "average_k_anonymity", "std_k_anonymity",
-                      "average_l_diversity", "std_l_diversity",
-                      "average_t_closeness", "std_t_closeness",
-                      "average_beta_likeness", "std_beta_likeness"
+                      "average_l_diversity_sa0", "average_l_diversity_sa1", "average_l_diversity_sa2",
+                      "average_t_closeness_sa0", "average_t_closeness_sa1", "average_t_closeness_sa2",
+                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2"
                     ]
     else:
         fieldnames = ["folder_name", 
                       "average_linkability", "average_linkability_ci_lower", "average_linkability_ci_upper",
                       "average_singling_out", "average_singling_ci_lower", "average_singling_ci_upper",
-                      "average_k_anonymity", "average_l_diversity", "average_t_closeness", "average_beta_likeness"
+                      "average_k_anonymity",
+                      "average_l_diversity_sa0", "average_l_diversity_sa1", "average_l_diversity_sa2",
+                      "average_t_closeness_sa0", "average_t_closeness_sa1", "average_t_closeness_sa2",
+                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2"
                       ]
     
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
