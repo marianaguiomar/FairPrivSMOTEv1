@@ -61,7 +61,7 @@ def filter_candidates(profile_df, df):
     candidates = profile_df[
         (profile_df["n_unique"] < 0.9 * n_rows) &
         (profile_df["missing_%"] < 0.3) &
-        (profile_df["n_unique"] >= 2)
+        (profile_df["n_unique"] >= 3)
     ]
 
     return candidates
@@ -133,7 +133,7 @@ def select_sensitive_attribute(dataset_name):
     #df = bin_continuous_attribute(df) # bin data
 
     # vizualize histograms
-    histogram(dataset_name, df)
+    #histogram(dataset_name, df)
         
         
     # ---- STEP 1: STATISTICAL PROFILING ----
@@ -173,46 +173,40 @@ def select_sensitive_attribute(dataset_name):
     # ---- FINAL DECISION ----
     
     if final_candidates:
-        best_row = ideal_candidates[ideal_candidates["column"].isin(final_candidates)].iloc[0]
+        top_candidates_df = ideal_candidates[ideal_candidates["column"].isin(final_candidates)].head(3)
     else:
-        best_row = ideal_candidates.iloc[0]
-    
-    # pick final candidate with the highest entropy
-    best_sensitive = best_row["column"]
-    
-    if final_candidates:   
-        best_sensitive = ideal_candidates[
-            ideal_candidates["column"].isin(final_candidates)
-        ].iloc[0]["column"]
-    else:
-        best_sensitive = ideal_candidates.iloc[0]["column"]
+        top_candidates_df = ideal_candidates.head(3)
 
     print("Final candidates:", final_candidates)
-    print("Selected Sensitive Attribute:", best_sensitive)
-    
-    # Calculate stats for the final display
-    stats = distribution_balance(df, best_sensitive)
-    unique_vals = df[best_sensitive].unique().tolist()
+    print(f"\nSelected Top {len(top_candidates_df)} Sensitive Attributes:")
 
     # ---- FORMATTED OUTPUT ----
-    print("\n" + "="*40)
-    print(f"🏆 SELECTED SENSITIVE ATTRIBUTE: {best_sensitive}")
-    print("="*40)
-    print(f"🔹 Number of Unique Values: {best_row['n_unique']}")
-    print(f"🔹 Max Class Ratio:        {stats['max_class_ratio']:.4f}")
-    print(f"🔹 Min Class Ratio:        {stats['min_class_ratio']:.4f}")
-    print(f"🔹 Entropy Score:          {best_row['entropy']:.4f}")
-    print(f"🔹 Unique Values List:")
-    
-    # Print values in a clean, bulleted list
-    for val in sorted([str(v) for v in unique_vals]):
-        print(f"   - {val}")
-    print("="*40 + "\n")
+    top_sensitive_attrs = []
+    for idx, (_, row) in enumerate(top_candidates_df.iterrows(), 1):
+        col_name = row["column"]
+        top_sensitive_attrs.append(col_name)
+        
+        stats = distribution_balance(df, col_name)
+        unique_vals = df[col_name].unique().tolist()
+        
+        print("\n" + "="*40)
+        print(f"🏆 RANK #{idx}: {col_name}")
+        print("="*40)
+        print(f"🔹 Number of Unique Values: {row['n_unique']}")
+        print(f"🔹 Max Class Ratio:        {stats['max_class_ratio']:.4f}")
+        print(f"🔹 Min Class Ratio:        {stats['min_class_ratio']:.4f}")
+        print(f"🔹 Entropy Score:          {row['entropy']:.4f}")
+        print(f"🔹 Unique Values List:")
+        
+        # Print values in a clean, bulleted list
+        for val in sorted([str(v) for v in unique_vals]):
+            print(f"   - {val}")
+        print("="*40 + "\n")
 
-    return best_sensitive
+    return top_sensitive_attrs
     
     
     
 if __name__ == "__main__":
-    select_sensitive_attribute("56")
+    select_sensitive_attribute("oulad")
 
