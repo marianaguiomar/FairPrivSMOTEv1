@@ -22,7 +22,11 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, majority=True):
-      # --- Step 1: Flag 'single_out' rows using k-anonymity ---
+    # --- Step 0: Handle specific column rounding for german dataset ---
+    if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
+        dataset['credit-amount'] = dataset['credit-amount'].round(3)
+    
+    # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)
 
@@ -39,6 +43,14 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
     class_tuple: max(reduced_maximum_count - count, 0) 
         for class_tuple, count in minority_classes.items()
     }
+    
+    
+    print("\n=== CATEGORY COUNTS & SAMPLES TO INCREASE ===")
+    print("category_counts:", category_counts)
+    print("majority_class:", majority_class, "count:", category_counts[majority_class])
+    print("reduced_maximum_count:", reduced_maximum_count)
+    print("samples_to_increase:", samples_to_increase)
+    
 
     # --- Step 4: Split majority and minority class data ---
     df_majority = dataset[
@@ -61,27 +73,57 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
 
     # --- Step 5: Replace single-outs in majority class ---
     if 'single_out' in df_majority.columns:
+        
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
+        print(f"number of majority class single_out: {len(df_majority_single_out)}")
         if len(df_majority_single_out) >= (knn+1):
-            replaced_majority = apply_private_smote_replace(df_majority_single_out.drop(columns=['single_out']), epsilon, len(df_majority_single_out), knn, replace=True)
+            # Pass full majority class for KNN, but only replace the single-out indices
+            replaced_majority = apply_private_smote_replace(
+                df_majority.drop(columns=['single_out']), 
+                epsilon, 
+                len(df_majority_single_out), 
+                knn, 
+                replace=True,
+                single_out_indices=df_majority_single_out.index.tolist()
+            )
             df_majority = pd.concat([df_majority_remaining, replaced_majority], ignore_index=True)
         else:
             return None
+            
+            
+
 
     # --- Step 6: Handle minority classes ---
     generated_data = []
     cleaned_minority_data = []
 
     for class_tuple, df_subset in df_minority.items():
+        
+        print(f"\n--- MINORITY SUBGROUP {class_tuple} BEFORE AUGMENTATION ---")
+        print("Total size:", len(df_subset))
+        print("Single-outs:", len(df_subset[df_subset['single_out']==1]))
+        '''
+        print("Non-single-outs:", len(df_subset[df_subset['single_out']!=1]))
+        print("Target to generate:", samples_to_increase[class_tuple] if majority else int(len(df_subset)*augmentation_rate))
+        '''
         #print(f"class_tuple: {class_tuple}")
         df_single_out = df_subset[df_subset['single_out'] == 1]
         
         df_non_single_out = df_subset[df_subset['single_out'] != 1]
 
         # --- Step 6a: Replace single-outs if any ---
+        
         if len(df_single_out)>= (knn+1):
-            replaced = apply_private_smote_replace(df_single_out.drop(columns=['single_out']), epsilon, len(df_single_out), knn, replace=True)
+            # Pass full subset for KNN, but only replace the single-out indices
+            replaced = apply_private_smote_replace(
+                df_subset.drop(columns=['single_out']), 
+                epsilon, 
+                len(df_single_out), 
+                knn, 
+                replace=True,
+                single_out_indices=df_single_out.index.tolist()
+            )
             cleaned_minority_data.append(df_non_single_out)
             generated_data.append(replaced)
         elif len(df_single_out) == 0:
@@ -90,6 +132,12 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
             cleaned_minority_data.append(df_subset)
         else:
             return None
+        '''
+        print(f"After single-out replacement: {len(replaced)} synthetic rows replaced for {class_tuple}")
+        '''
+        
+        #cleaned_minority_data.append(df_subset)
+
 
         # --- Step 6b: Augment from full minority subset (before replacement) ---
         #base_for_augment = df_subset.select_dtypes(include=[np.number])
@@ -99,15 +147,30 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
             num_samples = int(len(df_subset) * augmentation_rate)
         if not df_subset.empty and len(df_subset) >= (knn+1) and not df_single_out.empty and num_samples > 0:
             #print(f"number of 'single_out': {len(df_single_out)}")
+            '''
+            print(f"--- DEBUG: class_tuple {class_tuple} ---")
+            print(f"df_subset shape: {df_subset.shape}")
+            print(f"Counts per target in df_subset:\n{df_subset['class-label'].value_counts()}")
+            print(f"Counts per protected attribute in df_subset:\n{df_subset['sex'].value_counts()}")
+            print(f"apply_private_smote_new called with {len(df_subset)} rows")
+            print("Unique target values:", df_subset[df_subset.columns[-1]].unique())
+            print("Unique protected values (if included in data):", df_subset['sex'].unique())
+            '''
             augmented = apply_private_smote_new(df_subset.drop(columns=["single_out"]), epsilon, num_samples, False, knn, k, key_vars, df_subset['single_out'])
             # Drop "highest_risk" column if it exists
             if 'highest_risk' in augmented.columns:
                 augmented = augmented.drop(columns=['highest_risk'])
             generated_data.append(augmented)
+            print(f"After augmentation: {len(augmented)} synthetic rows added for {class_tuple}")
         elif len(df_subset) < (knn+1):
+            print(f"Not enough samples to perform augmentation for {class_tuple} (need at least {knn+1}, have {len(df_subset)})")
             return None
         #print("\n")
-    
+
+    print("\n--- FINAL CHECK BEFORE CONCATENATION ---")
+    print("Majority size:", len(df_majority))
+    for class_tuple, df_sub in df_minority.items():
+        print(f"Minority {class_tuple} size (original + replaced + augmented): {len(df_sub)}")
 
     # --- Step 7: Final dataset assembly ---
     final_df = pd.concat(
@@ -115,16 +178,17 @@ def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, aug
         ignore_index=True
     )
 
+
     # --- Step 8: Drop 'single_out' and clean final data ---
     if 'single_out' in final_df.columns:
         final_df = final_df.drop(columns=['single_out'])
 
-    #print("\nFinal subclass sizes:")
+    print("\nFinal subclass sizes:")
     for class_tuple in df_minority:
         final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
                                 (final_df[protected_attribute] == class_tuple[1])])
-        #print(f"  - {class_tuple}: {final_count}")
-    #print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
+        print(f"  - {class_tuple}: {final_count}")
+    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
 
     cleaned_final_df = final_df.applymap(unpack_value)
     cleaned_final_df = cleaned_final_df.applymap(standardize_binary)
