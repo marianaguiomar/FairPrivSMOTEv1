@@ -40,7 +40,17 @@ class PrivateSMOTE:
 
     def __init__(self, samples, knn, epsilon, single_out_indices=None):
         """Initiate arguments"""
+        # Store original index before reset to map single_out_indices
+        original_index = samples.index
         self.samples = samples.reset_index(drop=True)
+        
+        # Map original indices to new reset indices
+        if single_out_indices is not None:
+            index_mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(original_index)}
+            self.single_out_indices = [index_mapping[idx] for idx in single_out_indices if idx in index_mapping]
+        else:
+            self.single_out_indices = None
+        
         #self.N = int(N)
         self.knn = knn
         self.epsilon = epsilon
@@ -58,7 +68,6 @@ class PrivateSMOTE:
         self.unique_values = {}
         self.X_train_shape = ()
         self.x = ()
-        self.single_out_indices = single_out_indices
 
         # Target variable values
         self.y = np.array(self.samples.loc[:, self.samples.columns[-1]])
