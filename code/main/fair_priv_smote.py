@@ -13,6 +13,16 @@ def smote_v3(data, dataset_name, output_folder, class_column, protected_attribut
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
     smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, augmentation_rate, k, knn)
+    '''
+    print("Total dataset size at after smote_v3:", len(smote_df))
+    print(
+        smote_df
+        .groupby([protected_attribute, class_column])
+        .size()
+        .reset_index(name="count")
+    )
+    '''
+    
     # Save the processed file with "_[epsilon]" and "_QI[qi]" added to the filename
     if smote_df is None:
         print(f"Skipping dataset {dataset_name} due to insufficient data for SMOTE.")
