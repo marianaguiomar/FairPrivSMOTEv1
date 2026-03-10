@@ -120,6 +120,49 @@ def singling_out(orig_file, transf_file, control_file):
     print(risk)
     return value, ci
 
+import pandas as pd
+import time
+from anonymeter.evaluators import InferenceEvaluator
+
+def inference(orig_file, transf_file, control_file, aux_cols, target_col):
+    """
+    Measures the risk that an attacker can infer 'target_col' 
+    given 'aux_cols'.
+    """
+    # 1. Ensure target_col is not in aux_cols to prevent "data leakage"
+    if target_col in aux_cols:
+        print(f"Warning: {target_col} found in aux_cols. Removing it to ensure a valid attack.")
+        aux_cols = [col for col in aux_cols if col != target_col]
+
+    data = orig_file
+    transf_data = pd.read_csv(transf_file)
+    control_data = control_file
+
+    # Initialize the Evaluator
+    evaluator = InferenceEvaluator(ori=data, 
+                                   syn=transf_data, 
+                                   control=control_data,
+                                   aux_cols=aux_cols,
+                                   target_col=target_col)
+
+    print(f"Initiating inference attack on target: {target_col}")
+    start_time = time.time()
+    
+    # Run the evaluation
+    # n_attacks is usually the size of your control set
+    evaluator.evaluate(n_jobs=-1, n_attacks=len(control_data))
+    
+    print("Attack finished")
+    elapsed_time = time.time() - start_time
+    print(f"Elapsed time: {elapsed_time:.2f} seconds")
+
+    # Extract results
+    value, ci = evaluator.risk()
+    risk_df = pd.DataFrame({'value': [value], 'ci': [ci]})
+    
+    print(risk_df)
+    return value, ci
+
 
 def calculate_k_anonymity(df, key_vars):    
     k = anonymity.k_anonymity(df, key_vars)
@@ -128,13 +171,77 @@ def calculate_k_anonymity(df, key_vars):
     return k
 
 def calculate_l_diversity(df, key_vars, sensitive_vars):
+    print("\n==============================")
+    print("DEBUGGING L-DIVERSITY")
+    print("==============================")
+
+    print("\nQI columns:", key_vars)
+    print("Dataset size:", len(df))
+
+    # --- Equivalence classes ---
+    eq_classes = df.groupby(key_vars)
+
+    group_sizes = eq_classes.size()
+
+    print("\nEquivalence class size distribution:")
+    print(group_sizes.value_counts().sort_index())
+
+    print("\nMinimum equivalence class size (k-anonymity candidate):", group_sizes.min())
+
+    # show smallest equivalence classes
+    print("\nExamples of smallest equivalence classes:")
+    smallest_groups = group_sizes[group_sizes == group_sizes.min()].head(5)
+
+    for qi_values in smallest_groups.index:
+        print("\nQI values:", qi_values)
+
+        if not isinstance(qi_values, tuple):
+            qi_values = (qi_values,)
+
+        mask = (df[key_vars] == pd.Series(qi_values, index=key_vars)).all(axis=1)
+        subset = df[mask]
+
+        print(subset)
+
     values = []
+
     for sa in sensitive_vars:
+        print("\n----------------------------------")
+        print(f"Processing SA: {sa}")
+
+        print("Unique values:", df[sa].unique())
+        print("Value counts:")
+        print(df[sa].value_counts())
+
+        # compute diversity per equivalence class
+        diversity_per_group = eq_classes[sa].nunique()
+
+        print("\nSensitive diversity per equivalence class (first 10):")
+        print(diversity_per_group.head(10))
+
+        print("\nMinimum diversity across groups:", diversity_per_group.min())
+
+        # show problematic groups
+        problematic = diversity_per_group[diversity_per_group == 1].head(5)
+
+        print("\nExample groups with diversity = 1:")
+
+        for qi_values in problematic.index:
+            print("\nQI values:", qi_values)
+
+            if not isinstance(qi_values, tuple):
+                qi_values = (qi_values,)
+
+            mask = (df[key_vars] == pd.Series(qi_values, index=key_vars)).all(axis=1)
+            subset = df[mask]
+
+            print(subset[[*key_vars, sa]])
+
         l = anonymity.l_diversity(df, key_vars, [sa])
+        print("\nComputed l:", l)
+
         values.append(l)
 
-    print(f"The dataset satisfies l-diversity with l values: {values} for sensitive attributes: {sensitive_vars}.")
-    return values
 
 def calculate_t_closeness(df, key_vars, sensitive_vars):
     values = []

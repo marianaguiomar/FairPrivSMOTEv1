@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import ast
 from metrics.fairness_metrics import compute_fairness_metrics
+from metrics.similarity_metrics import compute_all_similarity_metrics
 import time
 import math
 import argparse
@@ -11,7 +12,7 @@ import numpy as np
 import sys 
 import itertools
 import subprocess
-from metrics.linkability import linkability, singling_out, calculate_k_anonymity, calculate_l_diversity, calculate_t_closeness, calculate_beta_likeness
+from metrics.linkability import linkability, singling_out, inference, calculate_k_anonymity, calculate_l_diversity, calculate_t_closeness, calculate_beta_likeness
 from sdmetrics.single_table import BoundaryAdherence
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -67,6 +68,19 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
             l_values = calculate_l_diversity(df, qi_list, filtered_sa)
             t_values = calculate_t_closeness(df, qi_list, filtered_sa)
             b_values = calculate_beta_likeness(df, qi_list, filtered_sa)
+            
+            # Compute inference attack for each sensitive attribute
+            inference_values = []
+            inference_cis = []
+            for sa in filtered_sa:
+                try:
+                    inf_value, inf_ci = inference(orig_file, transf_file, control_file, qi_list, sa)
+                    inference_values.append(inf_value)
+                    inference_cis.append(inf_ci)
+                except Exception as e:
+                    print(f"Could not compute inference for {sa}: {e}")
+                    inference_values.append(np.nan)
+                    inference_cis.append((np.nan, np.nan))
 
             # Pad to length 3
             while len(l_values) < 3:
@@ -75,6 +89,10 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                 t_values.append(np.nan)
             while len(b_values) < 3:
                 b_values.append(np.nan)
+            while len(inference_values) < 3:
+                inference_values.append(np.nan)
+            while len(inference_cis) < 3:
+                inference_cis.append((np.nan, np.nan))
 
             '''
             # Compute Boundary Adherence
@@ -107,6 +125,13 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                             "beta_likeness_sa0": b_values[0],
                             "beta_likeness_sa1": b_values[1],
                             "beta_likeness_sa2": b_values[2],
+                            
+                            "inference_value_sa0": inference_values[0],
+                            "inference_ci_sa0": inference_cis[0],
+                            "inference_value_sa1": inference_values[1],
+                            "inference_ci_sa1": inference_cis[1],
+                            "inference_value_sa2": inference_values[2],
+                            "inference_ci_sa2": inference_cis[2],
                             })
 
 
@@ -166,7 +191,10 @@ def average_linkability(folder_path, combined_file_path, std=False):
             'k_anonymity',
             'l_diversity_sa0', 'l_diversity_sa1', 'l_diversity_sa2',
             't_closeness_sa0', 't_closeness_sa1', 't_closeness_sa2',
-            'beta_likeness_sa0', 'beta_likeness_sa1', 'beta_likeness_sa2'
+            'beta_likeness_sa0', 'beta_likeness_sa1', 'beta_likeness_sa2',
+            'inference_value_sa0', 'inference_ci_sa0',
+            'inference_value_sa1', 'inference_ci_sa1',
+            'inference_value_sa2', 'inference_ci_sa2'
         ]
 
         if all(col in df.columns for col in required_cols):
@@ -214,6 +242,35 @@ def average_linkability(folder_path, combined_file_path, std=False):
             avg_b1 = np.nanmean(df['beta_likeness_sa1'])
             avg_b2 = np.nanmean(df['beta_likeness_sa2'])
             
+            # ---------- INFERENCE ----------
+            avg_inf_val0 = np.nanmean(df['inference_value_sa0'])
+            avg_inf_val1 = np.nanmean(df['inference_value_sa1'])
+            avg_inf_val2 = np.nanmean(df['inference_value_sa2'])
+            
+            # Extract CI bounds for inference
+            def extract_ci_bounds(ci_series):
+                lower_bounds = []
+                upper_bounds = []
+                for ci in ci_series:
+                    if isinstance(ci, tuple) and len(ci) == 2:
+                        lower_bounds.append(ci[0])
+                        upper_bounds.append(ci[1])
+                    else:
+                        lower_bounds.append(np.nan)
+                        upper_bounds.append(np.nan)
+                return lower_bounds, upper_bounds
+            
+            inf_ci0_lower, inf_ci0_upper = extract_ci_bounds(df['inference_ci_sa0'])
+            inf_ci1_lower, inf_ci1_upper = extract_ci_bounds(df['inference_ci_sa1'])
+            inf_ci2_lower, inf_ci2_upper = extract_ci_bounds(df['inference_ci_sa2'])
+            
+            avg_inf_ci0_lower = np.nanmean(inf_ci0_lower)
+            avg_inf_ci0_upper = np.nanmean(inf_ci0_upper)
+            avg_inf_ci1_lower = np.nanmean(inf_ci1_lower)
+            avg_inf_ci1_upper = np.nanmean(inf_ci1_upper)
+            avg_inf_ci2_lower = np.nanmean(inf_ci2_lower)
+            avg_inf_ci2_upper = np.nanmean(inf_ci2_upper)
+            
             if std:
                 result = {
                     "average_linkability": avg_link,
@@ -244,6 +301,16 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_beta_likeness_sa0": avg_b0,
                     "average_beta_likeness_sa1": avg_b1,
                     "average_beta_likeness_sa2": avg_b2,
+                    
+                    "average_inference_value_sa0": avg_inf_val0,
+                    "average_inference_ci_sa0_lower": avg_inf_ci0_lower,
+                    "average_inference_ci_sa0_upper": avg_inf_ci0_upper,
+                    "average_inference_value_sa1": avg_inf_val1,
+                    "average_inference_ci_sa1_lower": avg_inf_ci1_lower,
+                    "average_inference_ci_sa1_upper": avg_inf_ci1_upper,
+                    "average_inference_value_sa2": avg_inf_val2,
+                    "average_inference_ci_sa2_lower": avg_inf_ci2_lower,
+                    "average_inference_ci_sa2_upper": avg_inf_ci2_upper,
                 }
             else:
                 result = {
@@ -268,6 +335,16 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_beta_likeness_sa0": avg_b0,
                     "average_beta_likeness_sa1": avg_b1,
                     "average_beta_likeness_sa2": avg_b2,
+                    
+                    "average_inference_value_sa0": avg_inf_val0,
+                    "average_inference_ci_sa0_lower": avg_inf_ci0_lower,
+                    "average_inference_ci_sa0_upper": avg_inf_ci0_upper,
+                    "average_inference_value_sa1": avg_inf_val1,
+                    "average_inference_ci_sa1_lower": avg_inf_ci1_lower,
+                    "average_inference_ci_sa1_upper": avg_inf_ci1_upper,
+                    "average_inference_value_sa2": avg_inf_val2,
+                    "average_inference_ci_sa2_lower": avg_inf_ci2_lower,
+                    "average_inference_ci_sa2_upper": avg_inf_ci2_upper,
                 }
 
             return result
@@ -333,7 +410,10 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
                       "average_k_anonymity", "std_k_anonymity",
                       "average_l_diversity_sa0", "average_l_diversity_sa1", "average_l_diversity_sa2",
                       "average_t_closeness_sa0", "average_t_closeness_sa1", "average_t_closeness_sa2",
-                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2"
+                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2",
+                      "average_inference_value_sa0", "average_inference_ci_sa0_lower", "average_inference_ci_sa0_upper",
+                      "average_inference_value_sa1", "average_inference_ci_sa1_lower", "average_inference_ci_sa1_upper",
+                      "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper"
                     ]
     else:
         fieldnames = ["folder_name", 
@@ -342,7 +422,10 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
                       "average_k_anonymity",
                       "average_l_diversity_sa0", "average_l_diversity_sa1", "average_l_diversity_sa2",
                       "average_t_closeness_sa0", "average_t_closeness_sa1", "average_t_closeness_sa2",
-                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2"
+                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2",
+                      "average_inference_value_sa0", "average_inference_ci_sa0_lower", "average_inference_ci_sa0_upper",
+                      "average_inference_value_sa1", "average_inference_ci_sa1_lower", "average_inference_ci_sa1_upper",
+                      "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper"
                       ]
     
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -527,6 +610,164 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
     print(f"Fairness results saved to {output_file}")
 
 
+# ------ SIMILARITY ------
+def average_similarity(input_folder, train_fold, std=False):
+    """
+    Calculate the average (and optionally standard deviation) of similarity metrics from multiple files.
+
+    Parameters:
+    - input_folder (str): Path to the folder containing synthetic dataset files.
+    - train_fold (pd.DataFrame): Original/training data for comparison.
+    - std (bool): Whether to calculate and include standard deviations. Default is False.
+
+    Returns:
+    - dict: Dictionary with average (and optionally std) similarity metrics and path for CSV save.
+    """
+    metrics = ["synthetic_diversity", "nearest_neighbor_distance", "range_coverage", 
+               "distribution_similarity", "correlation_similarity"]
+
+    total_metrics = {metric: 0 for metric in metrics}
+    count_metrics = {metric: 0 for metric in metrics}
+    metric_values = {metric: [] for metric in metrics}
+
+    total_files = 0
+    all_similarity_metrics = []
+
+    if not os.path.isdir(input_folder):
+        print(f"❌ Error: Directory does not exist: {input_folder}")
+        return None
+    
+    # Get all CSV files, including in subdirectories
+    csv_files = []
+    for root, dirs, files in os.walk(input_folder):
+        for file in files:
+            if file.endswith(".csv"):
+                csv_files.append(os.path.join(root, file))
+    
+    print(f"📁 Found {len(csv_files)} CSV files in {input_folder}")
+    
+    if len(csv_files) == 0:
+        print(f"⚠️  No CSV files found - synthetic data may not have been generated!")
+        # Return with consistent folder naming even if no files found
+        normalized_path = os.path.normpath(input_folder).replace(os.sep, '/')
+        # Extract the relative path from 'outputs_4' onward
+        if 'outputs_4' in normalized_path:
+            parts = normalized_path.split('outputs_4')
+            new_folder_path = 'outputs_4' + parts[-1]
+        else:
+            new_folder_path = normalized_path
+        return {"folder_name": new_folder_path, **{metric + "_avg": 0 for metric in metrics}}
+
+    for idx, file_path in enumerate(csv_files, start=1):
+        file_name = os.path.basename(file_path)
+        
+        print(f"\nProcessing similarity of file {idx}/{len(csv_files)}: {file_path}")
+        
+        try:
+            # Compute all similarity metrics for this file
+            similarity_metrics = compute_all_similarity_metrics(train_fold, file_path)
+            
+            file_metric_dict = {"File": file_name, **similarity_metrics}
+            all_similarity_metrics.append(file_metric_dict)
+            
+            for metric, value in similarity_metrics.items():
+                if metric in total_metrics and not (math.isnan(value) or math.isinf(value)):
+                    total_metrics[metric] += value
+                    count_metrics[metric] += 1
+                    metric_values[metric].append(value)
+            
+            total_files += 1
+        except Exception as e:
+            print(f"Warning: Could not process file {file_path}: {e}")
+
+    if total_files == 0:
+        # Return with consistent folder naming even if no files found
+        normalized_path = os.path.normpath(input_folder).replace(os.sep, '/')
+        # Extract the relative path from 'outputs_4' onward
+        if 'outputs_4' in normalized_path:
+            parts = normalized_path.split('outputs_4')
+            new_folder_path = 'outputs_4' + parts[-1]
+        else:
+            new_folder_path = normalized_path
+        return {"folder_name": new_folder_path, **{metric + "_avg": 0 for metric in metrics}}
+
+    # Save individual metrics to CSV (one per fold like fairness/linkability do)
+    results_df = pd.DataFrame(all_similarity_metrics)
+    normalized_path = os.path.normpath(input_folder).replace(os.sep, '/')
+    # Extract the relative path from 'outputs_4' onward
+    if 'outputs_4' in normalized_path:
+        parts = normalized_path.split('outputs_4')
+        new_folder_path = 'outputs_4' + parts[-1]
+    else:
+        new_folder_path = normalized_path
+    output_csv = f"results_metrics/similarity_results/{new_folder_path}.csv"
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+    results_df.to_csv(output_csv, index=False)
+    print(f"Saved detailed similarity results to: {output_csv}")
+
+    # Compute averages (and optionally stds)
+    average_sim = {"folder_name": new_folder_path}
+    for metric in metrics:
+        count = count_metrics[metric]
+        if count > 0:
+            average_sim[f"{metric}_avg"] = total_metrics[metric] / count
+            if std:
+                average_sim[f"{metric}_std"] = np.std(metric_values[metric], ddof=1)
+        else:
+            average_sim[f"{metric}_avg"] = 0
+            if std:
+                average_sim[f"{metric}_std"] = 0
+
+    return average_sim
+
+
+def process_similarity(input_folder, train_fold, output_file="results_metrics/similarity_results/similarity_intermediate.csv", std=False):
+    """
+    Process a single folder and write the calculated similarity statistics to a CSV file.
+
+    Parameters:
+    - input_folder (str): The path to the folder containing synthetic datasets.
+    - train_fold (pd.DataFrame): The original/training data.
+    - output_file (str): Path to the output CSV file.
+    - std (bool, optional): Whether to calculate standard deviations. Default is False.
+    """
+    if not os.path.exists(input_folder) or not os.path.isdir(input_folder):
+        print(f"❌ Error: Path '{input_folder}' does not exist or is not a directory.")
+        return
+
+    print(f"\n📊 Starting similarity processing for: {input_folder}")
+
+    # ------- calculate average -------
+    result = average_similarity(input_folder, train_fold, std=std)
+
+    print(result)
+
+    if not result:
+        print("⚠️ No valid result found to process.")
+        return
+
+    # ------- write the average -------
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    new_row = pd.DataFrame([result])
+
+    # Write or append to the CSV
+    if os.path.exists(output_file):
+        # Read existing file
+        existing_df = pd.read_csv(output_file)
+
+        # Reorder new_row columns to match existing
+        new_row = new_row[existing_df.columns]
+
+        # Append
+        final_df = pd.concat([existing_df, new_row], ignore_index=True)
+    else:
+        # Write fresh file with correct column order
+        final_df = new_row
+
+    # Save to CSV
+    final_df.to_csv(output_file, index=False)
+    print(f"✅ Similarity results saved to {output_file}")
 
 
 #process_linkability("datasets/outputs/outputs_3/others", "priv")
