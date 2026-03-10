@@ -195,7 +195,9 @@ class newPrivateSMOTE:
 
         if np.any(self.is_object_type):
             new = self.decode_categorical_columns(new)
-                    
+            
+        print(f"New synthetic samples generated before concat: {len(new)}")
+        
         '''
         # Concatenate highest and non-highest-risk samples
         if self.X_train_shape[0] != self.samples.shape[0]:
@@ -203,6 +205,8 @@ class newPrivateSMOTE:
                 self.samples['highest_risk']== 0]])
         '''
             
+        print(f"New samples len: {len(new)}")
+
         return new
 
     def _populate(self, N, i, nnarray):
