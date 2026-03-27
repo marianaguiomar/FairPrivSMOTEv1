@@ -196,7 +196,7 @@ class newPrivateSMOTE:
         if np.any(self.is_object_type):
             new = self.decode_categorical_columns(new)
             
-        print(f"New synthetic samples generated before concat: {len(new)}")
+        #print(f"New synthetic samples generated before concat: {len(new)}")
         
         '''
         # Concatenate highest and non-highest-risk samples
@@ -205,7 +205,7 @@ class newPrivateSMOTE:
                 self.samples['highest_risk']== 0]])
         '''
             
-        print(f"New samples len: {len(new)}")
+        #print(f"New samples len: {len(new)}")
 
         return new
 
@@ -377,8 +377,8 @@ class PrivateSMOTE:
         # Initialize the synthetic samples with the number of samples and attributes
         self.synthetic = np.empty(
             shape=(self.X_train_shape[0] * N, self.X_train_shape[1] + 1), dtype='float32')
-        print("all sample: ", self.samples.shape)
-        print("n highest risk: ", self.X_train_shape)
+        #print("all sample: ", self.samples.shape)
+        #print("n highest risk: ", self.X_train_shape)
         self.x = self.enc_data()
         # Find the minimum value for each numerical column
         self.min_values = [self.x[:, i].min(
@@ -542,7 +542,7 @@ def apply_private_smote_new(data, epsilon, n_samples, replace, knn, k, key_vars,
 def apply_original_private_smote(data, dataset_name, knn, per, epsilon, k, key_vars, output_folder, nqi):
     # encode string with numbers to numeric and remove trailing zeros
 
-    print(f"Output folder: {output_folder}")
+    #print(f"Output folder: {output_folder}")
     data = keep_numbers(data)
 
     # encoded target
@@ -579,7 +579,7 @@ def apply_original_private_smote(data, dataset_name, knn, per, epsilon, k, key_v
     # Save synthetic data
     newDf.to_csv(full_path, index=False)
 
-    print(f"Saved processed file: {full_path}\n")
+    #print(f"Saved processed file: {full_path}\n")
 
 if __name__ == "__main__":
     # Parse command-line arguments
@@ -641,4 +641,4 @@ if __name__ == "__main__":
     # Save synthetic data
     newDf.to_csv(full_path, index=False)
 
-    print(f"Saved processed file: {full_path}\n")
+    #print(f"Saved processed file: {full_path}\n")

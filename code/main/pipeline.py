@@ -7,13 +7,15 @@ import pandas as pd
 import sys
 import re
 from sklearn.model_selection import StratifiedKFold 
+import psutil, os
+
 
 from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes, check_protected_attribute
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.fair_priv_smote import smote_v3
 from main.privatesmote_old import apply_original_private_smote
 from metrics.time import process_files_in_folder, sum_times_fuzzy_match
-from metrics.metrics import process_linkability, process_fairness
+from metrics.metrics import process_linkability, process_fairness, process_similarity
 from metrics.plots import plot_feature_across_files
 from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
@@ -24,15 +26,14 @@ k_values = [3,5]
 knn_values = [3,5]
 augmentation_values = [0.3, 0.4]
 per_values = [2, 3]
+'''
+epsilon_values = [5.0]
+k_values = [5]
+knn_values = [3]
+augmentation_values = [0.3]
+per_values = [2]
+'''
 
-#epsilon_values = [0.1]
-#k_values = [3]
-#knn_values = [3]
-#augmentation_values = [0.3]
-#per_values = [2]
-
-
-default_input_folder = "datasets/inputs/fair"
 
 
 def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None):
@@ -59,32 +60,66 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
         class_column = get_class_column(dataset_name, "class_attribute.csv")
         key_vars = get_key_vars(file_name, "key_vars.csv")
 
+        '''
         # cross validation
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
         X = data.drop(columns=[class_column])
         y = data[class_column]
+        
 
         for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y)):
-            train_data = data.iloc[train_idx].reset_index(drop=True)
-            test_data = data.iloc[test_idx].reset_index(drop=True)
-            output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
-            os.makedirs(output_fold_folder, exist_ok=True)
+        
+        train_data = data.iloc[train_idx].reset_index(drop=True)
+        test_data = data.iloc[test_idx].reset_index(drop=True)
+        output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
+        os.makedirs(output_fold_folder, exist_ok=True)
 
-            invalid = True
+        invalid = True
+        '''
 
-            for protected_attribute in protected_attribute_list:
-                if protected_attribute not in data.columns:
-                    raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
-                if not check_protected_attribute(data, class_column, protected_attribute):
-                    print(f"Fold {fold_idx} of '{file_name}' is NOT valid for protected attribute '{protected_attribute}', skipping.")
-                    continue
+        for protected_attribute in protected_attribute_list:
+            if protected_attribute not in data.columns:
+                raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
+            if not check_protected_attribute(data, class_column, protected_attribute):
+                print(f"Fold {fold_idx} of '{file_name}' is NOT valid for protected attribute '{protected_attribute}', skipping.")
+                continue
+            
+            # --- NEW STRATIFICATION ---
+            strat_labels = (
+                data[class_column].astype(str) + "_" +
+                data[protected_attribute].astype(str)
+            )
 
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            
+            for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
+                
+                process = psutil.Process(os.getpid())
+                print("Memory used (MB):", process.memory_info().rss / 1024**2)
+                train_data = data.iloc[train_idx].reset_index(drop=True)
+                test_data = data.iloc[test_idx].reset_index(drop=True)
+                output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
+                os.makedirs(output_fold_folder, exist_ok=True)
+
+                invalid = True
+                
                 for ix, qi in enumerate(key_vars):
                     for epsilon in epsilon_values:
                         for k in k_values:
                             for knn in knn_values:
                                 for augmentation_rate in augmentation_values:
+                                    #ix = 1
+                                    #qi = key_vars[ix]
                                     '''
+                                    print("Total dataset size at before smote_v3:", len(train_data))
+                                    print(
+                                        train_data
+                                        .groupby([protected_attribute, class_column])
+                                        .size()
+                                        .reset_index(name="count")
+                                    )
+                                    '''
+                                    
                                     smote_v3(
                                         data=train_data,
                                         dataset_name=dataset_name, 
@@ -97,12 +132,17 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         k=k, 
                                         knn=knn,
                                         augmentation_rate=augmentation_rate)
-                                        '''
-                                     
+                                    
+                                        
                                     invalid = False
-            if not invalid:
-                process_fairness(output_fold_folder, test_data, output_file=f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv", protected_attribute=protected_attribute)
-                process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
+                if not invalid:
+                    process_fairness(output_fold_folder, test_data, output_file=f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv", protected_attribute=protected_attribute)
+                    process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
+                    #process_similarity(output_fold_folder, train_data, output_file=f"results_metrics/similarity_results/outputs_4/{final_folder_name}/similarity_intermediate.csv")
+                    #print("")    
+                
+                process = psutil.Process(os.getpid())
+                print("Memory used (MB) after:", process.memory_info().rss / 1024**2)
 
 def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, per_values, final_folder_name):
     # creating output folder
@@ -140,7 +180,6 @@ def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, p
                         for knn in knn_values:
                             for per in per_values:
                                 print("")
-                                
                                 apply_original_private_smote(
                                     data=train_data,
                                     dataset_name=dataset_name,
@@ -251,10 +290,10 @@ def run_original_fairsmote(input_folder, final_folder_name):
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
 
-input_folder_name = "RF_57"
-final_folder_name = "RF_57"
-#input_folder_name = "privacy_test"
-#final_folder_name = "privacy_test"
+#input_folder_name = "RF_57"
+#final_folder_name = "RF_57"
+input_folder_name = "test"
+final_folder_name = "test_with_replacement"
 method_number = "3"
 
 ### MY SMOTE ###

@@ -235,9 +235,9 @@ if __name__ == "__main__":
     
     print(di_table)
     '''
-    '''
-    original = load_dataset("datasets/inputs/test/8.csv")
-    modified_files = load_multiple_datasets("datasets/outputs/outputs_4/test/8/fold1")
+    
+    original = load_dataset("datasets/inputs/sus/8.csv")
+    modified_files = load_multiple_datasets("datasets/outputs/outputs_4/sus/8/fold1")
     
     analyze_dataset(
         original_df=original,
@@ -245,7 +245,7 @@ if __name__ == "__main__":
         protected_col="V27",
         label_col="class",
         qi_cols=['V13','V15','V16','V24','V33','V44'],
-        k=3
+        k=5
     )
     
     di_table = epsilon_sensitivity(
@@ -256,7 +256,7 @@ if __name__ == "__main__":
     )
     
     print(di_table)
-    '''
+    
     '''
     original = load_dataset("datasets/inputs/test/37.csv")
     modified_files = load_multiple_datasets("datasets/outputs/outputs_4/test/37/fold4")
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     
     print(di_table)
     '''
-    
+    '''
     # Example Usage:
     #df = pd.read_csv("datasets/outputs/outputs_4/test/8/fold1/8_eps0.1_k5_knn3_aug0.4_fairprivateSMOTE_V27_QI1.csv")
     #print(count_subgroups(df, 'V27', 'class'))
@@ -291,4 +291,5 @@ if __name__ == "__main__":
     # Save to CSV
     final_df.to_csv("results_metrics/linkability_results/outputs_4/RF_57/dataset_average_summary.csv", index=False)
     print(final_df)
+    '''
 

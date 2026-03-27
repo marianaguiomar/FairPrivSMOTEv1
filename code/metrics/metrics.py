@@ -12,11 +12,27 @@ import numpy as np
 import sys 
 import itertools
 import subprocess
-from metrics.linkability import linkability, singling_out, inference, calculate_k_anonymity, calculate_l_diversity, calculate_t_closeness, calculate_beta_likeness
+from metrics.linkability import linkability, singling_out, inference
 from sdmetrics.single_table import BoundaryAdherence
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter, process_sensitive_attributes
+
+
+def _parse_ci_value(ci):
+    if pd.isna(ci):
+        return (np.nan, np.nan)
+    if isinstance(ci, str):
+        try:
+            ci = ast.literal_eval(ci)
+        except (ValueError, SyntaxError):
+            return (np.nan, np.nan)
+    if isinstance(ci, (tuple, list)) and len(ci) == 2:
+        try:
+            return (float(ci[0]), float(ci[1]))
+        except (TypeError, ValueError):
+            return (np.nan, np.nan)
+    return (np.nan, np.nan)
 
 # ------ LINKABILITY ------
 def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = False, fair=False):
@@ -64,10 +80,6 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
             singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
             
             df = pd.read_csv(transf_file)
-            k_value = calculate_k_anonymity(df, qi_list)
-            l_values = calculate_l_diversity(df, qi_list, filtered_sa)
-            t_values = calculate_t_closeness(df, qi_list, filtered_sa)
-            b_values = calculate_beta_likeness(df, qi_list, filtered_sa)
             
             # Compute inference attack for each sensitive attribute
             inference_values = []
@@ -83,12 +95,6 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                     inference_cis.append((np.nan, np.nan))
 
             # Pad to length 3
-            while len(l_values) < 3:
-                l_values.append(np.nan)
-            while len(t_values) < 3:
-                t_values.append(np.nan)
-            while len(b_values) < 3:
-                b_values.append(np.nan)
             while len(inference_values) < 3:
                 inference_values.append(np.nan)
             while len(inference_cis) < 3:
@@ -112,26 +118,12 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                             "singling_out_value": singlingout_value,
                             "singling_out_ci": tuple(map(float, singlingout_ci)),
                             
-                            "k_anonymity": k_value, 
-                            
-                            "l_diversity_sa0": l_values[0],
-                            "l_diversity_sa1": l_values[1],
-                            "l_diversity_sa2": l_values[2],
-                            
-                            "t_closeness_sa0": t_values[0],
-                            "t_closeness_sa1": t_values[1],
-                            "t_closeness_sa2": t_values[2],
-                            
-                            "beta_likeness_sa0": b_values[0],
-                            "beta_likeness_sa1": b_values[1],
-                            "beta_likeness_sa2": b_values[2],
-                            
                             "inference_value_sa0": inference_values[0],
-                            "inference_ci_sa0": inference_cis[0],
+                            "inference_ci_sa0": tuple(map(float, inference_cis[0])),
                             "inference_value_sa1": inference_values[1],
-                            "inference_ci_sa1": inference_cis[1],
+                            "inference_ci_sa1": tuple(map(float, inference_cis[1])),
                             "inference_value_sa2": inference_values[2],
-                            "inference_ci_sa2": inference_cis[2],
+                            "inference_ci_sa2": tuple(map(float, inference_cis[2])),
                             })
 
 
@@ -155,11 +147,7 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                 results.append({"file":f"{file}_QI{fair_nqi}.csv",
                                 "linkability_value": linkability_value,
                                 "linkability_ci": tuple(map(float, linkability_ci)),
-                                "singling_out_ci": tuple(map(float, singlingout_ci)),
-                                "k_anonymity": k_value,
-                                "l_diversity": l_values[0],
-                                "t_closeness": t_values[0],
-                                "beta_likeness": b_values[0]
+                                "singling_out_ci": tuple(map(float, singlingout_ci))
                                 })
 
 
@@ -188,13 +176,13 @@ def average_linkability(folder_path, combined_file_path, std=False):
         required_cols = [
             'linkability_value', 'linkability_ci',
             'singling_out_value', 'singling_out_ci',
+            'inference_value_sa0', 'inference_ci_sa0',
+            'inference_value_sa1', 'inference_ci_sa1',
+            'inference_value_sa2', 'inference_ci_sa2',
             'k_anonymity',
             'l_diversity_sa0', 'l_diversity_sa1', 'l_diversity_sa2',
             't_closeness_sa0', 't_closeness_sa1', 't_closeness_sa2',
             'beta_likeness_sa0', 'beta_likeness_sa1', 'beta_likeness_sa2',
-            'inference_value_sa0', 'inference_ci_sa0',
-            'inference_value_sa1', 'inference_ci_sa1',
-            'inference_value_sa2', 'inference_ci_sa2'
         ]
 
         if all(col in df.columns for col in required_cols):
@@ -221,27 +209,6 @@ def average_linkability(folder_path, combined_file_path, std=False):
             avg_sing_lower = np.mean(sing_lower)
             avg_sing_upper = np.mean(sing_upper)
             
-            # ---------- K-ANONYMITY ----------
-            k_values = df['k_anonymity'].tolist()
-            avg_k = np.mean(k_values)
-            if std:
-                std_k = np.std(k_values, ddof=1)
-                
-            # ---------- L-DIVERSITY ----------
-            avg_l0 = np.nanmean(df['l_diversity_sa0'])
-            avg_l1 = np.nanmean(df['l_diversity_sa1'])
-            avg_l2 = np.nanmean(df['l_diversity_sa2'])
-                
-            # ---------- T-CLOSENESS ----------
-            avg_t0 = np.nanmean(df['t_closeness_sa0'])
-            avg_t1 = np.nanmean(df['t_closeness_sa1'])
-            avg_t2 = np.nanmean(df['t_closeness_sa2'])
-                
-            # ---------- BETA-LIKENESS ----------
-            avg_b0 = np.nanmean(df['beta_likeness_sa0'])
-            avg_b1 = np.nanmean(df['beta_likeness_sa1'])
-            avg_b2 = np.nanmean(df['beta_likeness_sa2'])
-            
             # ---------- INFERENCE ----------
             avg_inf_val0 = np.nanmean(df['inference_value_sa0'])
             avg_inf_val1 = np.nanmean(df['inference_value_sa1'])
@@ -252,12 +219,9 @@ def average_linkability(folder_path, combined_file_path, std=False):
                 lower_bounds = []
                 upper_bounds = []
                 for ci in ci_series:
-                    if isinstance(ci, tuple) and len(ci) == 2:
-                        lower_bounds.append(ci[0])
-                        upper_bounds.append(ci[1])
-                    else:
-                        lower_bounds.append(np.nan)
-                        upper_bounds.append(np.nan)
+                    parsed_ci = _parse_ci_value(ci)
+                    lower_bounds.append(parsed_ci[0])
+                    upper_bounds.append(parsed_ci[1])
                 return lower_bounds, upper_bounds
             
             inf_ci0_lower, inf_ci0_upper = extract_ci_bounds(df['inference_ci_sa0'])
@@ -287,21 +251,6 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "std_singling_ci_lower": np.std(sing_lower, ddof=1),
                     "std_singling_ci_upper": np.std(sing_upper, ddof=1),
                     
-                    "average_k_anonymity": avg_k,
-                    "std_k_anonymity": std_k,
-                    
-                    "average_l_diversity_sa0": avg_l0,
-                    "average_l_diversity_sa1": avg_l1,
-                    "average_l_diversity_sa2": avg_l2,
-
-                    "average_t_closeness_sa0": avg_t0,
-                    "average_t_closeness_sa1": avg_t1,
-                    "average_t_closeness_sa2": avg_t2,
-
-                    "average_beta_likeness_sa0": avg_b0,
-                    "average_beta_likeness_sa1": avg_b1,
-                    "average_beta_likeness_sa2": avg_b2,
-                    
                     "average_inference_value_sa0": avg_inf_val0,
                     "average_inference_ci_sa0_lower": avg_inf_ci0_lower,
                     "average_inference_ci_sa0_upper": avg_inf_ci0_upper,
@@ -321,20 +270,6 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_singling_out": avg_sing,
                     "average_singling_ci_lower": avg_sing_lower,
                     "average_singling_ci_upper": avg_sing_upper,
-                    
-                    "average_k_anonymity": avg_k,
-                    
-                    "average_l_diversity_sa0": avg_l0,
-                    "average_l_diversity_sa1": avg_l1,
-                    "average_l_diversity_sa2": avg_l2,
-
-                    "average_t_closeness_sa0": avg_t0,
-                    "average_t_closeness_sa1": avg_t1,
-                    "average_t_closeness_sa2": avg_t2,
-
-                    "average_beta_likeness_sa0": avg_b0,
-                    "average_beta_likeness_sa1": avg_b1,
-                    "average_beta_likeness_sa2": avg_b2,
                     
                     "average_inference_value_sa0": avg_inf_val0,
                     "average_inference_ci_sa0_lower": avg_inf_ci0_lower,
@@ -407,10 +342,6 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
                       "average_singling_out", "std_singling_out",
                       "average_singling_ci_lower", "average_singling_ci_upper",
                       "std_singling_ci_lower", "std_singling_ci_upper",
-                      "average_k_anonymity", "std_k_anonymity",
-                      "average_l_diversity_sa0", "average_l_diversity_sa1", "average_l_diversity_sa2",
-                      "average_t_closeness_sa0", "average_t_closeness_sa1", "average_t_closeness_sa2",
-                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2",
                       "average_inference_value_sa0", "average_inference_ci_sa0_lower", "average_inference_ci_sa0_upper",
                       "average_inference_value_sa1", "average_inference_ci_sa1_lower", "average_inference_ci_sa1_upper",
                       "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper"
@@ -419,10 +350,6 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
         fieldnames = ["folder_name", 
                       "average_linkability", "average_linkability_ci_lower", "average_linkability_ci_upper",
                       "average_singling_out", "average_singling_ci_lower", "average_singling_ci_upper",
-                      "average_k_anonymity",
-                      "average_l_diversity_sa0", "average_l_diversity_sa1", "average_l_diversity_sa2",
-                      "average_t_closeness_sa0", "average_t_closeness_sa1", "average_t_closeness_sa2",
-                      "average_beta_likeness_sa0", "average_beta_likeness_sa1", "average_beta_likeness_sa2",
                       "average_inference_value_sa0", "average_inference_ci_sa0_lower", "average_inference_ci_sa0_upper",
                       "average_inference_value_sa1", "average_inference_ci_sa1_lower", "average_inference_ci_sa1_upper",
                       "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper"

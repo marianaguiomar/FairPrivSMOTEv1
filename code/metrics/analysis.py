@@ -547,8 +547,8 @@ def print_average_di(input_folder):
         return
     
     combined_df = pd.concat(all_data, ignore_index=True)
-    
-    # Convert DI to numeric and calculate average
+    combined_df = combined_df.replace([np.inf, -np.inf], np.nan)
+
     combined_df["DI"] = pd.to_numeric(combined_df["DI"], errors="coerce")
     avg_di = combined_df["DI"].mean()
     
@@ -863,10 +863,114 @@ def compute_singleouts_di_recall(
 
     print(f"Full recall vs DI scatter plot saved as {full_plot_filename}")
 
+def calculate_column_skew(csv_file, column_name, output_image=None):
+    """
+    Calculate the skewness of a given column in a CSV file and generate histogram.
+    Uses pandas.skew() to compute the Fisher-Pearson coefficient of skewness.
+    Also applies log transformation (log1p if zeros exist, else log) and computes skewness on transformed data.
+    
+    Parameters:
+        csv_file (str): Path to the CSV file
+        column_name (str): Name of the column to calculate skewness for
+        output_image (str, optional): Path to save histogram image. If None, auto-generates filename.
+    
+    Returns:
+        tuple: (original_skewness, log_skewness, original_image_path, log_image_path), or (None, None, None, None) if column not found
+    """
+    df = pd.read_csv(csv_file)
+    
+    if column_name not in df.columns:
+        print(f"Column '{column_name}' not found in {csv_file}")
+        return None, None, None, None
+    
+    # -------- Original Data --------
+    data = df[column_name].dropna()
+    skewness = data.skew()
+    print(f"\n{'='*60}")
+    print(f"Original Skewness of '{column_name}': {skewness:.6f}")
+    print(f"{'='*60}")
+    
+    # Auto-generate output filename if not provided
+    if output_image is None:
+        csv_basename = os.path.basename(csv_file).replace('.csv', '')
+        output_image_original = f"skew_histogram_{csv_basename}_{column_name}.png"
+        output_image_log = f"skew_histogram_log_{csv_basename}_{column_name}.png"
+    else:
+        output_image_original = output_image.replace('.png', '_original.png')
+        output_image_log = output_image.replace('.png', '_log.png')
+    
+    # Create histogram for original data
+    plt.figure(figsize=(10, 6))
+    plt.hist(data, bins=30, edgecolor='black', alpha=0.7, color='steelblue')
+    plt.xlabel(column_name, fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title(f"Original Distribution of '{column_name}'\nSkewness: {skewness:.6f}", fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_image_original, dpi=200, bbox_inches='tight')
+    plt.close()
+    print(f"Original histogram saved to {output_image_original}")
+    
+    # -------- Log-Transformed Data --------
+    # Check if zeros exist
+    has_zeros = (data == 0).any()
+    
+    if has_zeros:
+        print(f"Zeros detected in column. Using np.log1p()...")
+        log_data = np.log1p(data)
+        log_method = "log1p"
+    else:
+        print(f"No zeros detected. Using np.log()...")
+        log_data = np.log(data)
+        log_method = "log"
+    
+    log_skewness = log_data.skew()
+    print(f"Log-Transformed Skewness ({log_method}) of '{column_name}': {log_skewness:.6f}")
+    print(f"{'='*60}\n")
+    
+    # Create histogram for log-transformed data
+    plt.figure(figsize=(10, 6))
+    plt.hist(log_data, bins=30, edgecolor='black', alpha=0.7, color='coral')
+    plt.xlabel(f"{log_method}({column_name})", fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title(f"Log-Transformed Distribution of '{column_name}' ({log_method})\nSkewness: {log_skewness:.6f}", fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_image_log, dpi=200, bbox_inches='tight')
+    plt.close()
+    print(f"Log-transformed histogram saved to {output_image_log}")
+    
+    return skewness, log_skewness, output_image_original, output_image_log
+
+def replace_column_with_original(altered_path, original_path, column_name, new_path):
+        altered_df = pd.read_csv(altered_path)
+        original_df = pd.read_csv(original_path)
+
+        if column_name not in altered_df.columns:
+            raise ValueError(f"Column '{column_name}' not found in altered dataset: {altered_path}")
+        if column_name not in original_df.columns:
+            raise ValueError(f"Column '{column_name}' not found in original dataset: {original_path}")
+
+        original_col = pd.to_numeric(original_df[column_name], errors="coerce")
+        has_zeros = (original_col == 0).any()
+
+        if has_zeros:
+            transformed_col = np.log1p(original_col)
+            transform_name = "log1p"
+        else:
+            transformed_col = np.log(original_col)
+            transform_name = "log"
+
+        altered_df[column_name] = transformed_col
+
+        os.makedirs(os.path.dirname(new_path), exist_ok=True)
+        altered_df.to_csv(new_path, index=False)
+        print(f"Saved new dataset with {transform_name}-transformed '{column_name}' from original to {new_path}")
+
 
 if __name__ == "__main__":
-    input_folder = "results_metrics/fairness_results/outputs_4/RF_42/33"
-    input_folder_improved = "results_metrics/fairness_results/outputs_4/german_qis/german"
+    input_folder = "results_metrics/fairness_results/outputs_4/RF_42/8"
+    input_folder_improved = "results_metrics/fairness_results/outputs_4/german_log_decimals1/german"
     linkability_folder = "results_metrics/linkability_results/outputs_4/german_qis_full/german"
 
     
@@ -881,14 +985,25 @@ if __name__ == "__main__":
     #print_average_di_by_threshold(input_folder_improved)
     #print_average_privacy_metrics(linkability_folder)
     
+    '''
     compute_singleouts_di_recall(
         base_results_folder="results_metrics/fairness_results/outputs_4/RF_42",
         test_datasets_folder="datasets/inputs/test",
         key_vars_file="key_vars.csv",
         output_csv="results_metrics/fairness_results/outputs_4/RF_42/singleout_di_summary.csv",
     )
+    '''
+    '''
+    replace_column_with_original(
+        altered_path="datasets/inputs/sus/german.csv",
+        original_path="datasets/original_datasets/fair/german.csv",
+        column_name="credit-amount",
+        new_path="datasets/newgerman/german.csv"
+    )
+       ''' 
+    #calculate_column_skew("datasets/newgerman/german.csv", "credit-amount")
     
-    
+
     
     
 

@@ -3,7 +3,6 @@ import time
 import pandas as pd
 import argparse
 from anonymeter.evaluators import LinkabilityEvaluator, SinglingOutEvaluator, InferenceEvaluator
-from pycanon import anonymity
 import os
 
 if __name__ == "__main__":
@@ -75,24 +74,49 @@ def linkability(orig_file, transf_file, control_file, key_vars, nqi_number):
                                     aux_cols=key_vars, 
                                     n_neighbors=10)
 
-    print("initiating attack")
+    #print("initiating attack")
     start_time = time.time()
     evaluator.evaluate(n_jobs=-1)
-    print("attack finished")
+    #print("attack finished")
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(elapsed_time)
+    #print(elapsed_time)
 
     value, ci = evaluator.risk()
     risk = pd.DataFrame({'value': evaluator.risk()[0], 'ci':[evaluator.risk()[1]]})
-    print(risk)
+    print(f"Linkability risk: {risk}")
     return value, ci
 
 
 def singling_out(orig_file, transf_file, control_file):
+    value = 1.0
+    ci = (1.0, 1.0)
+
+    return value, ci
+
     data = orig_file
     transf_data = pd.read_csv(transf_file)
     control_data = control_file
+    
+    print("ORIGINAL COLUMNS:", data.columns.tolist())
+    for col in data.columns:
+        if not data[col].map(type).eq(data[col].iloc[0].__class__).all():
+            print(f"⚠️ Mixed types in column: {col}")
+
+        if data[col].dtype == "object":
+            bad_values = data[col].astype(str).str.contains(r"[\'\"\\\(\)&|]").sum()
+            if bad_values > 0:
+                print(f"⚠️ Column {col} has {bad_values} problematic values")
+    
+    print("TRANSFORMED COLUMNS:", transf_data.columns.tolist())
+    for col in transf_data.columns:
+        if not transf_data[col].map(type).eq(transf_data[col].iloc[0].__class__).all():
+            print(f"⚠️ Mixed types in column: {col}")
+
+        if transf_data[col].dtype == "object":
+            bad_values = transf_data[col].astype(str).str.contains(r"[\'\"\\\(\)&|]").sum()
+            if bad_values > 0:
+                print(f"⚠️ Column {col} has {bad_values} problematic values")
 
     evaluator = SinglingOutEvaluator(
         ori=data,
@@ -102,13 +126,13 @@ def singling_out(orig_file, transf_file, control_file):
         max_attempts=100_000
     )
 
-    print("initiating singling out attack")    
+    #print("initiating singling out attack")    
     start_time = time.time()
     evaluator.evaluate(mode='univariate')
-    print("attack finished")
+    #print("attack finished")
     end_time = time.time()
     elapsed_time = end_time - start_time
-    print(elapsed_time)
+    #print(elapsed_time)
 
 
     value, ci = evaluator.risk()
@@ -117,12 +141,8 @@ def singling_out(orig_file, transf_file, control_file):
         'ci': [ci]
     })
 
-    print(risk)
+    print(f"Singling out risk: {risk}")
     return value, ci
-
-import pandas as pd
-import time
-from anonymeter.evaluators import InferenceEvaluator
 
 def inference(orig_file, transf_file, control_file, aux_cols, target_col):
     """
@@ -143,120 +163,33 @@ def inference(orig_file, transf_file, control_file, aux_cols, target_col):
                                    syn=transf_data, 
                                    control=control_data,
                                    aux_cols=aux_cols,
-                                   target_col=target_col)
+                                   secret=target_col,
+                                   n_attacks = min(1000, len(control_data))
+                                )     
 
-    print(f"Initiating inference attack on target: {target_col}")
+
+    #print(f"Initiating inference attack on target: {target_col}")
     start_time = time.time()
     
     # Run the evaluation
     # n_attacks is usually the size of your control set
-    evaluator.evaluate(n_jobs=-1, n_attacks=len(control_data))
+    evaluator.evaluate(n_jobs=-1)
     
-    print("Attack finished")
+    #print("Attack finished")
     elapsed_time = time.time() - start_time
-    print(f"Elapsed time: {elapsed_time:.2f} seconds")
+    #print(f"Elapsed time: {elapsed_time:.2f} seconds")
 
     # Extract results
     value, ci = evaluator.risk()
     risk_df = pd.DataFrame({'value': [value], 'ci': [ci]})
     
-    print(risk_df)
+    print(f"inference attack results: {risk_df}")
     return value, ci
 
-
-def calculate_k_anonymity(df, key_vars):    
-    k = anonymity.k_anonymity(df, key_vars)
-    print(f"The dataset satisfies {k}-anonymity.")
-
-    return k
-
-def calculate_l_diversity(df, key_vars, sensitive_vars):
-    print("\n==============================")
-    print("DEBUGGING L-DIVERSITY")
-    print("==============================")
-
-    print("\nQI columns:", key_vars)
-    print("Dataset size:", len(df))
-
-    # --- Equivalence classes ---
-    eq_classes = df.groupby(key_vars)
-
-    group_sizes = eq_classes.size()
-
-    print("\nEquivalence class size distribution:")
-    print(group_sizes.value_counts().sort_index())
-
-    print("\nMinimum equivalence class size (k-anonymity candidate):", group_sizes.min())
-
-    # show smallest equivalence classes
-    print("\nExamples of smallest equivalence classes:")
-    smallest_groups = group_sizes[group_sizes == group_sizes.min()].head(5)
-
-    for qi_values in smallest_groups.index:
-        print("\nQI values:", qi_values)
-
-        if not isinstance(qi_values, tuple):
-            qi_values = (qi_values,)
-
-        mask = (df[key_vars] == pd.Series(qi_values, index=key_vars)).all(axis=1)
-        subset = df[mask]
-
-        print(subset)
-
-    values = []
-
-    for sa in sensitive_vars:
-        print("\n----------------------------------")
-        print(f"Processing SA: {sa}")
-
-        print("Unique values:", df[sa].unique())
-        print("Value counts:")
-        print(df[sa].value_counts())
-
-        # compute diversity per equivalence class
-        diversity_per_group = eq_classes[sa].nunique()
-
-        print("\nSensitive diversity per equivalence class (first 10):")
-        print(diversity_per_group.head(10))
-
-        print("\nMinimum diversity across groups:", diversity_per_group.min())
-
-        # show problematic groups
-        problematic = diversity_per_group[diversity_per_group == 1].head(5)
-
-        print("\nExample groups with diversity = 1:")
-
-        for qi_values in problematic.index:
-            print("\nQI values:", qi_values)
-
-            if not isinstance(qi_values, tuple):
-                qi_values = (qi_values,)
-
-            mask = (df[key_vars] == pd.Series(qi_values, index=key_vars)).all(axis=1)
-            subset = df[mask]
-
-            print(subset[[*key_vars, sa]])
-
-        l = anonymity.l_diversity(df, key_vars, [sa])
-        print("\nComputed l:", l)
-
-        values.append(l)
-
-
-def calculate_t_closeness(df, key_vars, sensitive_vars):
-    values = []
-    for sa in sensitive_vars:
-        t = anonymity.t_closeness(df, key_vars, [sa])
-        values.append(t)
-
-    print(f"The dataset satisfies t-closeness with t values: {values} for sensitive attributes: {sensitive_vars}.")
-    return values
-
-def calculate_beta_likeness(df, key_vars, sensitive_vars):
     values = []
     for sa in sensitive_vars:
         beta = anonymity.basic_beta_likeness(df, key_vars, [sa])
         values.append(beta)
 
-    print(f"The dataset satisfies beta-likeness with beta values: {values} for sensitive attributes: {sensitive_vars}.")
+    #print(f"The dataset satisfies beta-likeness with beta values: {values} for sensitive attributes: {sensitive_vars}.")
     return values
