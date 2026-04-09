@@ -23,13 +23,13 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, majority=True):
     # --- Step 0: Handle specific column rounding for german dataset ---
-
+    '''
     if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
         dataset['credit-amount'] = dataset['credit-amount'].round(1)
     '''    
     if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
         dataset['credit-amount'] = pd.qcut(dataset['credit-amount'], q=10,labels=False, duplicates='drop')
-    '''
+    
     # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)

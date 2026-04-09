@@ -12,7 +12,7 @@ import numpy as np
 import sys 
 import itertools
 import subprocess
-from metrics.linkability import linkability, singling_out, inference
+from metrics.linkability import linkability, singling_out, inference, dcr_overfitting, dcr_baseline, sdm_disclosure
 from sdmetrics.single_table import BoundaryAdherence
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -78,12 +78,15 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
         if not fair:
             linkability_value, linkability_ci = linkability(orig_file, transf_file, control_file, qi_list, nqi)
             singlingout_value, singlingout_ci = singling_out(orig_file, transf_file, control_file)
+            dcr_overfitting_value = dcr_overfitting(orig_file, transf_file, control_file)
+            dcr_baseline_value = dcr_baseline(orig_file, transf_file)
             
             df = pd.read_csv(transf_file)
             
             # Compute inference attack for each sensitive attribute
             inference_values = []
             inference_cis = []
+            sdm_disclosure_values = []
             for sa in filtered_sa:
                 try:
                     inf_value, inf_ci = inference(orig_file, transf_file, control_file, qi_list, sa)
@@ -94,11 +97,20 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                     inference_values.append(np.nan)
                     inference_cis.append((np.nan, np.nan))
 
+                try:
+                    sdm_value, _ = sdm_disclosure(orig_file, transf_file, qi_list, [sa])
+                    sdm_disclosure_values.append(sdm_value)
+                except Exception as e:
+                    print(f"Could not compute sdm_disclosure for {sa}: {e}")
+                    sdm_disclosure_values.append(np.nan)
+
             # Pad to length 3
             while len(inference_values) < 3:
                 inference_values.append(np.nan)
             while len(inference_cis) < 3:
                 inference_cis.append((np.nan, np.nan))
+            while len(sdm_disclosure_values) < 3:
+                sdm_disclosure_values.append(np.nan)
 
             '''
             # Compute Boundary Adherence
@@ -117,6 +129,8 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                             "linkability_ci": tuple(map(float, linkability_ci)),
                             "singling_out_value": singlingout_value,
                             "singling_out_ci": tuple(map(float, singlingout_ci)),
+                            "dcr_overfitting": dcr_overfitting_value,
+                            "dcr_baseline": dcr_baseline_value,
                             
                             "inference_value_sa0": inference_values[0],
                             "inference_ci_sa0": tuple(map(float, inference_cis[0])),
@@ -124,6 +138,9 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
                             "inference_ci_sa1": tuple(map(float, inference_cis[1])),
                             "inference_value_sa2": inference_values[2],
                             "inference_ci_sa2": tuple(map(float, inference_cis[2])),
+                            "sdm_disclosure_value_sa0": sdm_disclosure_values[0],
+                            "sdm_disclosure_value_sa1": sdm_disclosure_values[1],
+                            "sdm_disclosure_value_sa2": sdm_disclosure_values[2],
                             })
 
 
@@ -176,13 +193,11 @@ def average_linkability(folder_path, combined_file_path, std=False):
         required_cols = [
             'linkability_value', 'linkability_ci',
             'singling_out_value', 'singling_out_ci',
+            'dcr_overfitting', 'dcr_baseline',
             'inference_value_sa0', 'inference_ci_sa0',
             'inference_value_sa1', 'inference_ci_sa1',
             'inference_value_sa2', 'inference_ci_sa2',
-            'k_anonymity',
-            'l_diversity_sa0', 'l_diversity_sa1', 'l_diversity_sa2',
-            't_closeness_sa0', 't_closeness_sa1', 't_closeness_sa2',
-            'beta_likeness_sa0', 'beta_likeness_sa1', 'beta_likeness_sa2',
+            'sdm_disclosure_value_sa0', 'sdm_disclosure_value_sa1', 'sdm_disclosure_value_sa2',
         ]
 
         if all(col in df.columns for col in required_cols):
@@ -234,6 +249,18 @@ def average_linkability(folder_path, combined_file_path, std=False):
             avg_inf_ci1_upper = np.nanmean(inf_ci1_upper)
             avg_inf_ci2_lower = np.nanmean(inf_ci2_lower)
             avg_inf_ci2_upper = np.nanmean(inf_ci2_upper)
+
+            # ---------- DCR METRICS ----------
+            dcr_overfitting_values = pd.to_numeric(df['dcr_overfitting'], errors='coerce').tolist()
+            dcr_baseline_values = pd.to_numeric(df['dcr_baseline'], errors='coerce').tolist()
+
+            avg_dcr_overfitting = np.nanmean(dcr_overfitting_values)
+            avg_dcr_baseline = np.nanmean(dcr_baseline_values)
+
+            # ---------- SDM DISCLOSURE ----------
+            avg_sdm_val0 = np.nanmean(pd.to_numeric(df['sdm_disclosure_value_sa0'], errors='coerce'))
+            avg_sdm_val1 = np.nanmean(pd.to_numeric(df['sdm_disclosure_value_sa1'], errors='coerce'))
+            avg_sdm_val2 = np.nanmean(pd.to_numeric(df['sdm_disclosure_value_sa2'], errors='coerce'))
             
             if std:
                 result = {
@@ -250,6 +277,11 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_singling_ci_upper": avg_sing_upper,
                     "std_singling_ci_lower": np.std(sing_lower, ddof=1),
                     "std_singling_ci_upper": np.std(sing_upper, ddof=1),
+
+                    "average_dcr_overfitting": avg_dcr_overfitting,
+                    "std_dcr_overfitting": np.nanstd(dcr_overfitting_values, ddof=1),
+                    "average_dcr_baseline": avg_dcr_baseline,
+                    "std_dcr_baseline": np.nanstd(dcr_baseline_values, ddof=1),
                     
                     "average_inference_value_sa0": avg_inf_val0,
                     "average_inference_ci_sa0_lower": avg_inf_ci0_lower,
@@ -260,6 +292,13 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_inference_value_sa2": avg_inf_val2,
                     "average_inference_ci_sa2_lower": avg_inf_ci2_lower,
                     "average_inference_ci_sa2_upper": avg_inf_ci2_upper,
+
+                    "average_sdm_disclosure_value_sa0": avg_sdm_val0,
+                    "std_sdm_disclosure_value_sa0": np.nanstd(pd.to_numeric(df['sdm_disclosure_value_sa0'], errors='coerce'), ddof=1),
+                    "average_sdm_disclosure_value_sa1": avg_sdm_val1,
+                    "std_sdm_disclosure_value_sa1": np.nanstd(pd.to_numeric(df['sdm_disclosure_value_sa1'], errors='coerce'), ddof=1),
+                    "average_sdm_disclosure_value_sa2": avg_sdm_val2,
+                    "std_sdm_disclosure_value_sa2": np.nanstd(pd.to_numeric(df['sdm_disclosure_value_sa2'], errors='coerce'), ddof=1),
                 }
             else:
                 result = {
@@ -270,6 +309,9 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_singling_out": avg_sing,
                     "average_singling_ci_lower": avg_sing_lower,
                     "average_singling_ci_upper": avg_sing_upper,
+
+                    "average_dcr_overfitting": avg_dcr_overfitting,
+                    "average_dcr_baseline": avg_dcr_baseline,
                     
                     "average_inference_value_sa0": avg_inf_val0,
                     "average_inference_ci_sa0_lower": avg_inf_ci0_lower,
@@ -280,6 +322,10 @@ def average_linkability(folder_path, combined_file_path, std=False):
                     "average_inference_value_sa2": avg_inf_val2,
                     "average_inference_ci_sa2_lower": avg_inf_ci2_lower,
                     "average_inference_ci_sa2_upper": avg_inf_ci2_upper,
+
+                    "average_sdm_disclosure_value_sa0": avg_sdm_val0,
+                    "average_sdm_disclosure_value_sa1": avg_sdm_val1,
+                    "average_sdm_disclosure_value_sa2": avg_sdm_val2,
                 }
 
             return result
@@ -342,17 +388,24 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
                       "average_singling_out", "std_singling_out",
                       "average_singling_ci_lower", "average_singling_ci_upper",
                       "std_singling_ci_lower", "std_singling_ci_upper",
+                                            "average_dcr_overfitting", "std_dcr_overfitting",
+                                            "average_dcr_baseline", "std_dcr_baseline",
                       "average_inference_value_sa0", "average_inference_ci_sa0_lower", "average_inference_ci_sa0_upper",
                       "average_inference_value_sa1", "average_inference_ci_sa1_lower", "average_inference_ci_sa1_upper",
-                      "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper"
+                                            "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper",
+                                            "average_sdm_disclosure_value_sa0", "std_sdm_disclosure_value_sa0",
+                                            "average_sdm_disclosure_value_sa1", "std_sdm_disclosure_value_sa1",
+                                            "average_sdm_disclosure_value_sa2", "std_sdm_disclosure_value_sa2"
                     ]
     else:
         fieldnames = ["folder_name", 
                       "average_linkability", "average_linkability_ci_lower", "average_linkability_ci_upper",
                       "average_singling_out", "average_singling_ci_lower", "average_singling_ci_upper",
+                                            "average_dcr_overfitting", "average_dcr_baseline",
                       "average_inference_value_sa0", "average_inference_ci_sa0_lower", "average_inference_ci_sa0_upper",
                       "average_inference_value_sa1", "average_inference_ci_sa1_lower", "average_inference_ci_sa1_upper",
-                      "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper"
+                                            "average_inference_value_sa2", "average_inference_ci_sa2_lower", "average_inference_ci_sa2_upper",
+                                            "average_sdm_disclosure_value_sa0", "average_sdm_disclosure_value_sa1", "average_sdm_disclosure_value_sa2"
                       ]
     
     os.makedirs(os.path.dirname(output_file), exist_ok=True)

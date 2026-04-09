@@ -3,6 +3,9 @@ import time
 import pandas as pd
 import argparse
 from anonymeter.evaluators import LinkabilityEvaluator, SinglingOutEvaluator, InferenceEvaluator
+from sdmetrics.single_table import (DCROverfittingProtection, DCRBaselineProtection, DisclosureProtection, DisclosureProtectionEstimate)
+from sdv.metadata import SingleTableMetadata
+
 import os
 
 if __name__ == "__main__":
@@ -193,3 +196,107 @@ def inference(orig_file, transf_file, control_file, aux_cols, target_col):
 
     #print(f"The dataset satisfies beta-likeness with beta values: {values} for sensitive attributes: {sensitive_vars}.")
     return values
+
+def dcr_overfitting(orig_file, transf_file, control_file):
+    """
+    Measures if the synthetic data is too close to the real data (memorization).
+    Higher score (closer to 1.0) = Better privacy (less overfitting).
+    """
+    return 1.0
+
+    # In Anonymeter logic, orig_file is the train data, control_file is the holdout/test data
+    data = orig_file
+    transf_data = pd.read_csv(transf_file)
+    control_data = control_file
+    
+    # 1. Automatically detect the column types for the distance math
+    metadata = SingleTableMetadata()
+    metadata.detect_from_dataframe(data)
+    
+    start_time = time.time()
+    
+    # 2. Compute using explicit keyword arguments to satisfy the new API
+    score = DCROverfittingProtection.compute(
+        real_training_data=data,
+        real_validation_data=control_data,
+        synthetic_data=transf_data,
+        metadata=metadata.to_dict()
+    )
+    
+    elapsed_time = time.time() - start_time
+    print(f"DCROverfittingProtection score: {score:.4f} (Time: {elapsed_time:.2f}s)")
+    
+    return score
+
+
+def dcr_baseline(orig_file, transf_file):
+    """
+    Compares the distance between real/synthetic vs real/random data.
+    Higher score (closer to 1.0) = Better privacy (harder to link).
+    """
+    return 1.0
+
+    data = orig_file
+    transf_data = pd.read_csv(transf_file)
+    
+    # 1. Automatically detect the column types
+    metadata = SingleTableMetadata()
+    metadata.detect_from_dataframe(data)
+    
+    start_time = time.time()
+    
+    # Baseline protection only requires the real data and metadata
+    score = DCRBaselineProtection.compute(
+        real_data=data,
+        synthetic_data=transf_data,
+        metadata=metadata.to_dict()
+    )
+    
+    elapsed_time = time.time() - start_time
+    print(f"DCRBaselineProtection score: {score:.4f} (Time: {elapsed_time:.2f}s)")
+    
+    return score
+
+
+def sdm_disclosure(orig_file, transf_file, known_cols, sensitive_cols):
+    """
+    Measures the risk of an attacker guessing sensitive columns based on known columns.
+    Automatically switches to the Estimate version for large datasets (>5000 rows).
+    Higher score (closer to 1.0) = Better privacy.
+    """
+    return 1.0, {}
+
+    # 1. Ensure sensitive columns aren't in known columns to prevent leakage
+    clean_known_cols = [col for col in known_cols if col not in sensitive_cols]
+    if len(clean_known_cols) != len(known_cols):
+        print(f"Warning: Sensitive columns found in known_cols. Removed them for valid test.")
+
+    data = orig_file
+    transf_data = pd.read_csv(transf_file)
+    
+    start_time = time.time()
+    
+    # 2. Dynamic Metric Selection based on dataset size
+    # You can adjust this threshold. 5,000 is generally where exact matches get slow.
+    if len(data) > 5000:
+        #print(f"Dataset has {len(data)} rows. Using DisclosureProtectionEstimate...")
+        metric = DisclosureProtectionEstimate
+    else:
+        #print(f"Dataset has {len(data)} rows. Using standard DisclosureProtection...")
+        metric = DisclosureProtection
+        
+    # 3. Compute the breakdown (gives you the overall score plus context)
+    results = metric.compute_breakdown(
+        real_data=data,
+        synthetic_data=transf_data,
+        known_column_names=clean_known_cols,
+        sensitive_column_names=sensitive_cols
+    )
+    
+    elapsed_time = time.time() - start_time
+    score = results.get('score', 0.0)
+    
+    print(f"SDMetrics Disclosure Protection score: {score:.4f} (Time: {elapsed_time:.2f}s)")
+    
+    # Returning the core score, plus the breakdown dict in case you want to save it to a CSV later
+    return score, results

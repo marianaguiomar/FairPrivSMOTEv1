@@ -24,7 +24,7 @@ from others.fair import generate_samples
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 k_values = [3,5]
 knn_values = [3,5]
-augmentation_values = [0.3, 0.4]
+augmentation_values = [0.6, 0.8]
 per_values = [2, 3]
 '''
 epsilon_values = [5.0]
@@ -52,6 +52,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
             continue
         file_path = os.path.join(input_folder, file_name)
         data = pd.read_csv(file_path)
+        print(f"\nProcessing file: {file_name}")
 
         dataset_name_match = re.match(r'^(.*?).csv', file_name)
         dataset_name = dataset_name_match.group(1)
@@ -90,7 +91,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 data[protected_attribute].astype(str)
             )
 
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
             
             for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
                 
@@ -292,8 +293,8 @@ def run_original_fairsmote(input_folder, final_folder_name):
 
 #input_folder_name = "RF_57"
 #final_folder_name = "RF_57"
-input_folder_name = "test"
-final_folder_name = "test_with_replacement"
+input_folder_name = "test_done"
+final_folder_name = "test_bigger_oversampling"
 method_number = "3"
 
 ### MY SMOTE ###
