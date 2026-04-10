@@ -12,23 +12,26 @@ import itertools
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'cleanup')))
 from helpers.clean import unpack_value, standardize_binary
+from pipeline_helper import get_continuous_columns
 from main.privatesmote import apply_private_smote_replace
 from main.privatesmote_old import apply_private_smote_new
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import KBinsDiscretizer
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-def new_apply(dataset, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, majority=True):
-    # --- Step 0: Handle specific column rounding for german dataset ---
-    '''
-    if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
-        dataset['credit-amount'] = dataset['credit-amount'].round(1)
-    '''    
-    if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
-        dataset['credit-amount'] = pd.qcut(dataset['credit-amount'], q=10,labels=False, duplicates='drop')
+def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, majority=True):
+    # --- Step 0: Bin continuous key variables for k-anonymity grouping ---
+    continuous_columns = get_continuous_columns(str(dataset_name), "continuous_attributes.csv")
+
+    for col in continuous_columns:
+        if col in dataset.columns and col in key_vars:
+            # Create a KBinsDiscretizer -- uniform, quantile, kmeans
+            kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy='kmeans')
+            # KBinsDiscretizer expects 2D array
+            dataset[col] = kbd.fit_transform(dataset[[col]])
     
     # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)

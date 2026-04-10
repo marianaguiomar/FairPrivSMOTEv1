@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 def smote_v3(data, dataset_name, output_folder, class_column, protected_attribute, qi, qi_index, epsilon, k, knn, augmentation_rate):
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
-    smote_df = new_apply(data, protected_attribute, epsilon, class_column, qi, augmentation_rate, k, knn)
+    smote_df = new_apply(data, dataset_name, protected_attribute, epsilon, class_column, qi, augmentation_rate, k, knn)
     '''
     print("Total dataset size at after smote_v3:", len(smote_df))
     print(

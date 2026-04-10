@@ -117,6 +117,43 @@ def process_sensitive_attributes(file_name, sensitive_attributes_file_path):
     raise ValueError(f"Error: No sensitive_attribute found for file {file_name}")
 
 
+def get_continuous_columns(file_name, continuous_attributes_file_path):
+    '''
+    Loads the continuous attributes from a CSV file.
+    Returns the list of continuous attributes for the given file_name.
+
+    Expected format: CSV with columns [file, continuous_attribute]
+    where continuous_attribute is formatted as "['attr1','attr2','attr3']" (valid Python list literal)
+    '''
+    with open(continuous_attributes_file_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header
+
+        for row in reader:
+            if not row:
+                continue
+
+            file_id = row[0].strip()
+
+            # If we found the specific file we are looking for
+            if file_id == file_name:
+                raw_value = row[1].strip()
+
+                try:
+                    # ast.literal_eval safely converts "['attr1','attr2']" string to ['attr1', 'attr2'] list
+                    continuous_list = ast.literal_eval(raw_value)
+
+                    if isinstance(continuous_list, list):
+                        return continuous_list
+                    else:
+                        raise ValueError(f"Invalid continuous_attribute format for file {file_id}: {raw_value} (not a list)")
+
+                except (ValueError, SyntaxError) as e:
+                    raise ValueError(f"Error parsing continuous_attribute for file {file_id}: {raw_value}\n{e}")
+
+    raise ValueError(f"Error: No continuous_attribute found for file {file_name}")
+
+
 
 def get_class_column(file_name, class_column_file):
     '''
