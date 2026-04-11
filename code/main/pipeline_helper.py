@@ -274,11 +274,29 @@ def binary_columns_percentage(input_file, class_column):
 
     return binary_cols, binary_percentages
 
-def print_class_combinations(file_path, class_column, protected_attribute):
+def print_class_combinations(dataset_name):
+    dataset_key = os.path.splitext(dataset_name)[0]
+    dataset_file = f"{dataset_key}.csv"
+
+    candidate_paths = [
+        os.path.join("datasets", "inputs", "test", dataset_file),
+        os.path.join("datasets", "inputs", "fair", dataset_file),
+        os.path.join("datasets", "inputs", "priv", dataset_file),
+        os.path.join("datasets", "original_treated", "fair_new", dataset_file),
+        os.path.join("datasets", "original_treated", "priv_new", dataset_file),
+    ]
+
+    file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+    print(file_path)
+    if file_path is None:
+        raise ValueError(f"Dataset file not found for '{dataset_key}'. Checked: {candidate_paths}")
+
+    class_column = get_class_column(dataset_key, "class_attribute.csv")
+    protected_attributes = process_protected_attributes(dataset_key, "protected_attributes.csv")
+
     data = pd.read_csv(file_path)
-    
     total_rows = len(data)
-    
+
     # Class-level stats
     class_counts = data[class_column].value_counts().sort_index()
     print("\nClass distribution:")
@@ -286,12 +304,23 @@ def print_class_combinations(file_path, class_column, protected_attribute):
         percent = (count / total_rows) * 100
         print(f"Class {cls}: {count} ({percent:.2f}%)")
 
-    # Subclass-level stats (class + protected attribute)
-    combo_counts = data.groupby([class_column, protected_attribute]).size()
-    print("\nSubclass (class, protected_attribute) distribution:")
-    for (cls, attr), count in combo_counts.items():
-        percent = (count / total_rows) * 100
-        print(f"Class {cls}, Protected {attr}: {count} ({percent:.2f}%)")
+    # Protected attribute and subclass-level stats
+    for protected_attribute in protected_attributes:
+        if protected_attribute not in data.columns:
+            print(f"\nProtected attribute '{protected_attribute}' not found in dataset columns.")
+            continue
+
+        protected_counts = data[protected_attribute].value_counts().sort_index()
+        print(f"\nProtected attribute '{protected_attribute}' distribution:")
+        for value, count in protected_counts.items():
+            percent = (count / total_rows) * 100
+            print(f"Protected {value}: {count} ({percent:.2f}%)")
+
+        combo_counts = data.groupby([class_column, protected_attribute]).size()
+        print(f"\nSubclass (class, {protected_attribute}) distribution:")
+        for (cls, attr), count in combo_counts.items():
+            percent = (count / total_rows) * 100
+            print(f"Class {cls}, Protected {attr}: {count} ({percent:.2f}%)")
 
 # Helper function to sort files based on the numeric part of the filename
 # Helper function to sort files based on the numeric part of the filename, QI, and dataset name
@@ -341,3 +370,9 @@ def ds_name_sorter(df, file_column='file'):
     df_sorted = df_sorted.drop(columns=['dataset_name', 'num_part', 'qi_number'])
 
     return df_sorted
+
+
+if __name__ == "__main__":
+    # Example usage:
+    dataset_name = "student"
+    print_class_combinations(f"{dataset_name}.csv")

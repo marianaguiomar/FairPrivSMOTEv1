@@ -95,6 +95,7 @@ class_attribute.csv
 key_vars.csv
 protected_attributes.csv
 sensitive_attribute.csv
+continuous_attributes.csv
 
 
 priv39/
