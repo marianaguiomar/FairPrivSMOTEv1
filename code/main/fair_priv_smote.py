@@ -9,10 +9,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 #from main.pipeline_helper import process_protected_attributes, check_protected_attribute, get_class_column, get_key_vars, binary_columns_percentage
 
 
-def smote_v3(data, dataset_name, output_folder, class_column, protected_attribute, qi, qi_index, epsilon, k, knn, augmentation_rate):
+def smote_v3(data, dataset_name, output_folder, class_column, protected_attribute, qi, qi_index, epsilon, k, knn, augmentation_rate, removal_strategy="majority_only", extra_rules=None):
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
-    smote_df = new_apply(data, dataset_name, protected_attribute, epsilon, class_column, qi, augmentation_rate, k, knn)
+    smote_df = new_apply(data, dataset_name, protected_attribute, epsilon, class_column, qi, augmentation_rate, k, knn, removal_strategy, extra_rules)
     '''
     print("Total dataset size at after smote_v3:", len(smote_df))
     print(

@@ -24,7 +24,8 @@ from others.fair import generate_samples
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 k_values = [3,5]
 knn_values = [3,5]
-augmentation_values = [0.6, 0.8]
+#augmentation_values = [0.6, 0.8]
+augmentation_values = [0.3, 0.4]
 per_values = [2, 3]
 '''
 epsilon_values = [5.0]
@@ -36,7 +37,7 @@ per_values = [2]
 
 
 
-def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None):
+def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     if final_folder_name is None:
@@ -91,7 +92,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 data[protected_attribute].astype(str)
             )
 
-            skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
             
             for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
                 
@@ -132,13 +133,15 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         epsilon=epsilon, 
                                         k=k, 
                                         knn=knn,
-                                        augmentation_rate=augmentation_rate)
+                                        augmentation_rate=augmentation_rate,
+                                        removal_strategy=removal_strategy,
+                                        extra_rules=extra_rules)
                                     
                                         
                                     invalid = False
                 if not invalid:
                     process_fairness(output_fold_folder, test_data, output_file=f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv", protected_attribute=protected_attribute)
-                    process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
+                    #process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
                     #process_similarity(output_fold_folder, train_data, output_file=f"results_metrics/similarity_results/outputs_4/{final_folder_name}/similarity_intermediate.csv")
                     #print("")    
                 
@@ -293,12 +296,15 @@ def run_original_fairsmote(input_folder, final_folder_name):
 
 #input_folder_name = "RF_57"
 #final_folder_name = "RF_57"
-input_folder_name = "test_done"
-final_folder_name = "test_bigger_oversampling"
+input_folder_name = "student"
+final_folder_name = "student_subgroup_single_out"
 method_number = "3"
 
+removal_strategy = "subgroup_rules"  # Options: "class_only", "majority_only", "subgroup_rules", None
+extra_rules = "single_out_only"  # Options: "synthetic_only", "single_out_only", None
+
 ### MY SMOTE ###
-method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name)
+method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules)
 
 ### ORIGINAL SMOTE ###
 #run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
