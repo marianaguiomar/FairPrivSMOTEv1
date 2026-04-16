@@ -161,20 +161,21 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             synthetic_only_mode = ("synthetic_only" in extra_rules)
 
     # --- Step 0: Bin continuous key variables for k-anonymity grouping ---
-    '''
+    
     continuous_columns = get_continuous_columns(str(dataset_name), "continuous_attributes.csv")
-
+    
     for col in continuous_columns:
         if col in dataset.columns and col in key_vars:
             # Create a KBinsDiscretizer -- uniform, quantile, kmeans
-            kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy='kmeans')
+            kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy='uniform')
             # KBinsDiscretizer expects 2D array
             dataset[col] = kbd.fit_transform(dataset[[col]])
-            '''
-    
+            
+    '''
     if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
         dataset['credit-amount'] = pd.qcut(dataset['credit-amount'], q=10,labels=False, duplicates='drop')
-    
+    '''
+
     # --- Step 1: Flag 'single_out' rows using k-anonymity ---
     kgrp = dataset.groupby(key_vars)[key_vars[0]].transform(len)
     dataset['single_out'] = np.where(kgrp < k, 1, 0)

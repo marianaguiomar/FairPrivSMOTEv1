@@ -90,6 +90,7 @@ results_metrics_2025/
 helper_images/
 experiment/
 plots/
+old/
 
 class_attribute.csv
 key_vars.csv

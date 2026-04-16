@@ -279,11 +279,12 @@ def print_class_combinations(dataset_name):
     dataset_file = f"{dataset_key}.csv"
 
     candidate_paths = [
-        os.path.join("datasets", "inputs", "test", dataset_file),
-        os.path.join("datasets", "inputs", "fair", dataset_file),
-        os.path.join("datasets", "inputs", "priv", dataset_file),
-        os.path.join("datasets", "original_treated", "fair_new", dataset_file),
-        os.path.join("datasets", "original_treated", "priv_new", dataset_file),
+        #os.path.join("datasets", "inputs", "test", dataset_file),
+        #os.path.join("datasets", "inputs", "fair", dataset_file),
+        #os.path.join("datasets", "inputs", "priv", dataset_file),
+        #os.path.join("datasets", "original_treated", "fair_new", dataset_file),
+        #os.path.join("datasets", "original_treated", "priv_new", dataset_file),
+        os.path.join("datasets", "original_treated", "new", dataset_file),
     ]
 
     file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
@@ -374,5 +375,5 @@ def ds_name_sorter(df, file_column='file'):
 
 if __name__ == "__main__":
     # Example usage:
-    dataset_name = "student"
+    dataset_name = "compas"
     print_class_combinations(f"{dataset_name}.csv")
