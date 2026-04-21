@@ -116,7 +116,6 @@ def process_sensitive_attributes(file_name, sensitive_attributes_file_path):
     
     raise ValueError(f"Error: No sensitive_attribute found for file {file_name}")
 
-
 def get_continuous_columns(file_name, continuous_attributes_file_path):
     '''
     Loads the continuous attributes from a CSV file.
@@ -152,8 +151,6 @@ def get_continuous_columns(file_name, continuous_attributes_file_path):
                     raise ValueError(f"Error parsing continuous_attribute for file {file_id}: {raw_value}\n{e}")
 
     raise ValueError(f"Error: No continuous_attribute found for file {file_name}")
-
-
 
 def get_class_column(file_name, class_column_file):
     '''
@@ -274,28 +271,79 @@ def binary_columns_percentage(input_file, class_column):
 
     return binary_cols, binary_percentages
 
-def print_class_combinations(dataset_name):
-    dataset_key = os.path.splitext(dataset_name)[0]
-    dataset_file = f"{dataset_key}.csv"
+def print_class_combinations(dataset_name=None, dataset=None, class_column=None, protected_attributes=None):
+    """
+    Prints class and protected-attribute combination distributions.
 
-    candidate_paths = [
-        #os.path.join("datasets", "inputs", "test", dataset_file),
-        #os.path.join("datasets", "inputs", "fair", dataset_file),
-        #os.path.join("datasets", "inputs", "priv", dataset_file),
-        #os.path.join("datasets", "original_treated", "fair_new", dataset_file),
-        #os.path.join("datasets", "original_treated", "priv_new", dataset_file),
-        os.path.join("datasets", "original_treated", "new", dataset_file),
-    ]
+     You can call this function in two ways:
+    1) By dataset name (existing behavior):
+       print_class_combinations(dataset_name="56.csv")
+    2) By passing the dataset directly:
+         print_class_combinations(dataset=".../56/fold1/file.csv")
+         print_class_combinations(dataset=dataframe, class_column="target", protected_attributes=["sex"])
 
-    file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
-    print(file_path)
-    if file_path is None:
-        raise ValueError(f"Dataset file not found for '{dataset_key}'. Checked: {candidate_paths}")
+    Args:
+        dataset_name (str | None): Dataset name used to locate file and metadata in CSV configs.
+        dataset (pd.DataFrame | str | None): DataFrame or CSV path to use directly.
+            If a CSV path is provided and dataset_name is None, the dataset id is inferred
+            from the grandparent folder name.
+        class_column (str | None): Class column name. If None, loaded from class_attribute.csv when possible.
+        protected_attributes (list[str] | None): Protected attributes. If None, loaded from protected_attributes.csv when possible.
+    """
 
-    class_column = get_class_column(dataset_key, "class_attribute.csv")
-    protected_attributes = process_protected_attributes(dataset_key, "protected_attributes.csv")
+    def _infer_dataset_key_from_path(dataset_path):
+        normalized_path = os.path.normpath(dataset_path)
+        grandparent_dir = os.path.basename(os.path.dirname(os.path.dirname(normalized_path)))
+        return grandparent_dir if grandparent_dir else None
 
-    data = pd.read_csv(file_path)
+    dataset_key = os.path.splitext(dataset_name)[0] if dataset_name else None
+
+    if dataset is None:
+        if dataset_key is None:
+            raise ValueError("Either 'dataset_name' or 'dataset' must be provided.")
+
+        dataset_file = f"{dataset_key}.csv"
+        candidate_paths = [
+            os.path.join("datasets", "inputs", "test", dataset_file),
+            #os.path.join("datasets", "inputs", "fair", dataset_file),
+            #os.path.join("datasets", "inputs", "priv", dataset_file),
+            #os.path.join("datasets", "original_treated", "fair_new", dataset_file),
+            #os.path.join("datasets", "original_treated", "priv_new", dataset_file),
+            #os.path.join("datasets", "original_treated", "new", dataset_file),
+        ]
+
+        file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+        print(file_path)
+        if file_path is None:
+            raise ValueError(f"Dataset file not found for '{dataset_key}'. Checked: {candidate_paths}")
+
+        data = pd.read_csv(file_path)
+    else:
+        if isinstance(dataset, pd.DataFrame):
+            data = dataset.copy()
+        elif isinstance(dataset, str):
+            data = pd.read_csv(dataset)
+            if dataset_key is None:
+                dataset_key = _infer_dataset_key_from_path(dataset)
+        else:
+            raise TypeError("'dataset' must be a pandas DataFrame, a CSV path string, or None.")
+
+    if class_column is None:
+        if dataset_key is None:
+            raise ValueError(
+                "Could not infer dataset id from provided inputs. "
+                "Provide 'dataset_name' or explicitly set 'class_column'."
+            )
+        class_column = get_class_column(dataset_key, "class_attribute.csv")
+
+    if protected_attributes is None:
+        if dataset_key is None:
+            raise ValueError(
+                "Could not infer dataset id from provided inputs. "
+                "Provide 'dataset_name' or explicitly set 'protected_attributes'."
+            )
+        protected_attributes = process_protected_attributes(dataset_key, "protected_attributes.csv")
+
     total_rows = len(data)
 
     # Class-level stats
@@ -375,5 +423,7 @@ def ds_name_sorter(df, file_column='file'):
 
 if __name__ == "__main__":
     # Example usage:
-    dataset_name = "compas"
+    dataset_name = "law"
     print_class_combinations(f"{dataset_name}.csv")
+    dataset = "datasets/outputs/outputs_4/old/test_with_replacement/56/fold1/56_eps0.1_k3_knn3_aug0.3_fairprivateSMOTE_V38_QI0.csv"
+    #print_class_combinations(dataset=dataset)

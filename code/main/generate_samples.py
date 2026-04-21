@@ -149,7 +149,7 @@ def remove_tomek_links(df, class_column, protected_attribute, majority_class, re
 
     return cleaned_df
 
-def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, removal_strategy="majority_only", extra_rules=None, majority=True):
+def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, removal_strategy="majority_only", extra_rules=None, majority=True, apply_binning=False):
     single_out_only_mode = False
     synthetic_only_mode = False
     if removal_strategy is not None:
@@ -160,16 +160,17 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             single_out_only_mode = ("single_out_only" in extra_rules)
             synthetic_only_mode = ("synthetic_only" in extra_rules)
 
-    # --- Step 0: Bin continuous key variables for k-anonymity grouping ---
-    
-    continuous_columns = get_continuous_columns(str(dataset_name), "continuous_attributes.csv")
-    
-    for col in continuous_columns:
-        if col in dataset.columns and col in key_vars:
-            # Create a KBinsDiscretizer -- uniform, quantile, kmeans
-            kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy='uniform')
-            # KBinsDiscretizer expects 2D array
-            dataset[col] = kbd.fit_transform(dataset[[col]])
+    # --- Step 0: Optionally bin continuous key variables for k-anonymity grouping ---
+    if apply_binning:
+        print("hitting binning")
+        continuous_columns = get_continuous_columns(str(dataset_name), "continuous_attributes.csv")
+
+        for col in continuous_columns:
+            if col in dataset.columns and col in key_vars:
+                # Create a KBinsDiscretizer -- uniform, quantile, kmeans
+                kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy='kmeans')
+                # KBinsDiscretizer expects 2D array
+                dataset[col] = kbd.fit_transform(dataset[[col]])
             
     '''
     if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:

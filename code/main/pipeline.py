@@ -28,8 +28,8 @@ knn_values = [3,5]
 augmentation_values = [0.3, 0.4]
 per_values = [2, 3]
 '''
-epsilon_values = [5.0]
-k_values = [5]
+epsilon_values = [0.5]
+k_values = [3]
 knn_values = [3]
 augmentation_values = [0.3]
 per_values = [2]
@@ -37,7 +37,7 @@ per_values = [2]
 
 
 
-def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None):
+def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None, apply_binning=False):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     if final_folder_name is None:
@@ -135,7 +135,8 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         knn=knn,
                                         augmentation_rate=augmentation_rate,
                                         removal_strategy=removal_strategy,
-                                        extra_rules=extra_rules)
+                                        extra_rules=extra_rules,
+                                        apply_binning=apply_binning)
                                     
                                         
                                     invalid = False
@@ -296,12 +297,12 @@ def run_original_fairsmote(input_folder, final_folder_name):
 
 #input_folder_name = "RF_57"
 #final_folder_name = "RF_57"
-input_folder_name = "student"
-final_folder_name = "student_subgroup_single_out"
+input_folder_name = "tomek_fair"
+final_folder_name = "tomek_majority_only"
 method_number = "3"
 
-removal_strategy = "subgroup_rules"  # Options: "class_only", "majority_only", "subgroup_rules", None
-extra_rules = "single_out_only"  # Options: "synthetic_only", "single_out_only", None
+removal_strategy = "majority_only"  # Options: "class_only", "majority_only", "subgroup_rules", None
+extra_rules = None  # Options: "synthetic_only", "single_out_only", None
 
 ### MY SMOTE ###
 method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules)
