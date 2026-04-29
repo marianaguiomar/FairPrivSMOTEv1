@@ -28,16 +28,16 @@ knn_values = [3,5]
 augmentation_values = [0.3, 0.4]
 per_values = [2, 3]
 '''
-epsilon_values = [0.5]
-k_values = [3]
-knn_values = [3]
+epsilon_values = [1.0]
+k_values = [5]
+knn_values = [5]
 augmentation_values = [0.3]
 per_values = [2]
 '''
 
 
 
-def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None, apply_binning=False):
+def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None, binning=None):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     if final_folder_name is None:
@@ -110,7 +110,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                         for k in k_values:
                             for knn in knn_values:
                                 for augmentation_rate in augmentation_values:
-                                    #ix = 1
+                                    #ix = 2
                                     #qi = key_vars[ix]
                                     '''
                                     print("Total dataset size at before smote_v3:", len(train_data))
@@ -121,9 +121,11 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         .reset_index(name="count")
                                     )
                                     '''
-                                    
+                                    print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
+                                    #train_data_before = train_data.copy()
+                                    train_data_qi = train_data.copy(deep=True)
                                     smote_v3(
-                                        data=train_data,
+                                        data=train_data_qi,
                                         dataset_name=dataset_name, 
                                         output_folder=output_fold_folder, 
                                         class_column=class_column, 
@@ -136,8 +138,10 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         augmentation_rate=augmentation_rate,
                                         removal_strategy=removal_strategy,
                                         extra_rules=extra_rules,
-                                        apply_binning=apply_binning)
+                                            binning=binning)
                                     
+                                    print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
+                                    #print((train_data_before != train_data).sum())
                                         
                                     invalid = False
                 if not invalid:
@@ -295,17 +299,18 @@ def run_original_fairsmote(input_folder, final_folder_name):
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
 
-#input_folder_name = "RF_57"
-#final_folder_name = "RF_57"
-input_folder_name = "tomek_fair"
-final_folder_name = "tomek_majority_only"
+input_folder_name = "adult"
+final_folder_name = "new_treated_kmeans_debug"
+#input_folder_name = "law"
+#final_folder_name = "new_treated_kmeans_debug"
 method_number = "3"
 
-removal_strategy = "majority_only"  # Options: "class_only", "majority_only", "subgroup_rules", None
+removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None  # Options: "synthetic_only", "single_out_only", None
+binning = 'kmeans'  # Options: 'uniform', 'quantile', 'kmeans', None
 
 ### MY SMOTE ###
-method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules)
+method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning)
 
 ### ORIGINAL SMOTE ###
 #run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
