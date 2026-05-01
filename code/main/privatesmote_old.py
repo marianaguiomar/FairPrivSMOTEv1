@@ -39,7 +39,7 @@ def check_and_adjust_data_types(orig_df, new_df):
 class newPrivateSMOTE:
     """Apply PrivateSMOTE"""
 
-    def __init__(self, samples, knn, epsilon, k, key_vars, single_out_column):
+    def __init__(self, samples, knn, epsilon, k, key_vars, single_out_column, precomputed_neighbor_indices=None):
         """Initiate arguments"""
         self.samples = samples.reset_index(drop=True)
         self.N = 1
@@ -60,6 +60,7 @@ class newPrivateSMOTE:
         self.X_train_shape = ()
         self.x = ()
         self.single_out_column = single_out_column
+        self.precomputed_neighbor_indices = precomputed_neighbor_indices
 
         # Target variable values
         self.y = np.array(self.samples.loc[:, self.samples.columns[-1]])
@@ -110,7 +111,8 @@ class newPrivateSMOTE:
             # One-hot encode categorical columns for knn
             dummie_data = np.array(pd.get_dummies(
                 enc_samples, drop_first=True))
-            self.neighbors = self.nearest_neighbours(dummie_data)
+            if self.precomputed_neighbor_indices is None:
+                self.neighbors = self.nearest_neighbours(dummie_data)
 
             # Label encode the object-type columns
             enc_samples = np.array(
@@ -120,8 +122,9 @@ class newPrivateSMOTE:
 
         else:
             # Drop highest_risk and target variables to knn
-            self.neighbors = self.nearest_neighbours(
-                np.array(self.samples.loc[:, self.samples.columns[:-2]]))
+            if self.precomputed_neighbor_indices is None:
+                self.neighbors = self.nearest_neighbours(
+                    np.array(self.samples.loc[:, self.samples.columns[:-2]]))
             return np.array(self.samples.loc[:, self.samples.columns[:-2]])
 
     def encode_categorical_columns(self, df):
@@ -180,7 +183,10 @@ class newPrivateSMOTE:
         # For each observation find nearest neighbours
         # Generate one synthetic sample per selected index
         for i in selected_indices:
-            nnarray = self.neighbors.kneighbors(self.standardized_data[i].reshape(1, -1), return_distance=False)[0]
+            if self.precomputed_neighbor_indices is not None:
+                nnarray = self.precomputed_neighbor_indices[i]
+            else:
+                nnarray = self.neighbors.kneighbors(self.standardized_data[i].reshape(1, -1), return_distance=False)[0]
             self._populate(1, i, nnarray)
         
         # assign highest-risk bool value
@@ -488,7 +494,7 @@ class PrivateSMOTE:
             self.newindex += 1
             N -= 1
 
-def apply_private_smote_new(data, epsilon, n_samples, replace, knn, k, key_vars, single_out_column):
+def apply_private_smote_new(data, epsilon, n_samples, replace, knn, k, key_vars, single_out_column, precomputed_neighbor_indices=None):
     """
     This function applies PrivateSMOTE on the input data and returns the new synthetic samples.
     
@@ -527,7 +533,15 @@ def apply_private_smote_new(data, epsilon, n_samples, replace, knn, k, key_vars,
         data[data.columns[-1]] = target_encoder.fit_transform(data[data.columns[-1]])
 
     # Apply PrivateSMOTE
-    new_samples = newPrivateSMOTE(data, knn, epsilon, k, key_vars, single_out_column).over_sampling(n_samples)
+    new_samples = newPrivateSMOTE(
+        data,
+        knn,
+        epsilon,
+        k,
+        key_vars,
+        single_out_column,
+        precomputed_neighbor_indices=precomputed_neighbor_indices,
+    ).over_sampling(n_samples)
 
     # Decode the target column back if it was encoded
     if tgt_obj:

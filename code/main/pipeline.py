@@ -10,7 +10,7 @@ from sklearn.model_selection import StratifiedKFold
 import psutil, os
 
 
-from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes, check_protected_attribute
+from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes, check_protected_attribute, build_fold_subgroup_cache
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.fair_priv_smote import smote_v3
 from main.privatesmote_old import apply_original_private_smote
@@ -95,7 +95,6 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
             skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
             
             for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
-                
                 process = psutil.Process(os.getpid())
                 print("Memory used (MB):", process.memory_info().rss / 1024**2)
                 train_data = data.iloc[train_idx].reset_index(drop=True)
@@ -106,6 +105,13 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 invalid = True
                 
                 for ix, qi in enumerate(key_vars):
+                    fold_cache = build_fold_subgroup_cache(
+                        train_data,
+                        class_column,
+                        protected_attribute,
+                        qi,
+                        max(knn_values),
+                    )
                     for epsilon in epsilon_values:
                         for k in k_values:
                             for knn in knn_values:
@@ -121,7 +127,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         .reset_index(name="count")
                                     )
                                     '''
-                                    print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
+                                    #print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
                                     #train_data_before = train_data.copy()
                                     train_data_qi = train_data.copy(deep=True)
                                     smote_v3(
@@ -138,9 +144,10 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                         augmentation_rate=augmentation_rate,
                                         removal_strategy=removal_strategy,
                                         extra_rules=extra_rules,
-                                            binning=binning)
+                                        binning=binning,
+                                        fold_cache=fold_cache)
                                     
-                                    print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
+                                    #print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
                                     #print((train_data_before != train_data).sum())
                                         
                                     invalid = False
@@ -300,14 +307,14 @@ def run_original_fairsmote(input_folder, final_folder_name):
 
 
 input_folder_name = "adult"
-final_folder_name = "new_treated_kmeans_debug"
+final_folder_name = "new_treated_uniform_debug"
 #input_folder_name = "law"
 #final_folder_name = "new_treated_kmeans_debug"
 method_number = "3"
 
 removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None  # Options: "synthetic_only", "single_out_only", None
-binning = 'kmeans'  # Options: 'uniform', 'quantile', 'kmeans', None
+binning = 'uniform'  # Options: 'uniform', 'quantile', 'kmeans', None
 
 ### MY SMOTE ###
 method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning)

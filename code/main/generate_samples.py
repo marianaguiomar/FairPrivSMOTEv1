@@ -22,6 +22,17 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+
+def _get_cached_neighbor_indices(fold_cache, subgroup_key):
+    if not fold_cache:
+        return None
+
+    subgroup_cache = fold_cache.get("subgroups", {}).get(subgroup_key)
+    if not subgroup_cache:
+        return None
+
+    return subgroup_cache.get("neighbor_indices")
+
 def remove_tomek_links(df, class_column, protected_attribute, majority_class, removal_strategy="majority_only", extra_rules=None):
     df = df.copy().reset_index(drop=True)
 
@@ -149,7 +160,7 @@ def remove_tomek_links(df, class_column, protected_attribute, majority_class, re
 
     return cleaned_df
 
-def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, removal_strategy="majority_only", extra_rules=None, majority=True, apply_binning=False):
+def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column, key_vars, augmentation_rate, k, knn, removal_strategy="majority_only", extra_rules=None, majority=True, binning=None, fold_cache=None, debug_binned_path=None):
     single_out_only_mode = False
     synthetic_only_mode = False
     if removal_strategy is not None:
@@ -161,16 +172,24 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             synthetic_only_mode = ("synthetic_only" in extra_rules)
 
     # --- Step 0: Optionally bin continuous key variables for k-anonymity grouping ---
-    if apply_binning:
-        print("hitting binning")
+    if binning is not None:
+        valid_binning = {"uniform", "quantile", "kmeans"}
+        if binning not in valid_binning:
+            raise ValueError(f"Invalid binning strategy: {binning}. Choose from {sorted(valid_binning)}")
+
+        print(f"hitting binning ({binning})")
         continuous_columns = get_continuous_columns(str(dataset_name), "continuous_attributes.csv")
 
         for col in continuous_columns:
             if col in dataset.columns and col in key_vars:
                 # Create a KBinsDiscretizer -- uniform, quantile, kmeans
-                kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy='kmeans')
+                kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy=binning)
                 # KBinsDiscretizer expects 2D array
                 dataset[col] = kbd.fit_transform(dataset[[col]])
+
+        if debug_binned_path is not None:
+            os.makedirs(os.path.dirname(debug_binned_path), exist_ok=True)
+            dataset.to_csv(debug_binned_path, index=False)
             
     '''
     if 'credit-amount' in dataset.columns and 'credit-amount' in key_vars:
@@ -233,13 +252,18 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         
         if len(df_majority_single_out) >= (knn+1):
             # Pass full majority class for KNN, but only replace the single-out indices
+            majority_neighbor_indices = _get_cached_neighbor_indices(
+                fold_cache,
+                (majority_class[0], majority_class[1]),
+            )
             replaced_majority = apply_private_smote_replace(
                 df_majority.drop(columns=['single_out']), 
                 epsilon, 
                 len(df_majority_single_out), 
                 knn, 
                 replace=True,
-                single_out_indices=df_majority_single_out.index.tolist()
+                single_out_indices=df_majority_single_out.index.tolist(),
+                precomputed_neighbor_indices=majority_neighbor_indices,
             )
             if single_out_only_mode:
                 replaced_majority['single_out'] = 1
@@ -260,8 +284,6 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         print(f"\n--- MINORITY SUBGROUP {class_tuple} BEFORE AUGMENTATION ---")
         print("Total size:", len(df_subset))
         print("Single-outs:", len(df_subset[df_subset['single_out']==1]))
-        '''
-        '''
         print("Non-single-outs:", len(df_subset[df_subset['single_out']!=1]))
         print("Target to generate:", samples_to_increase[class_tuple] if majority else int(len(df_subset)*augmentation_rate))
         '''
@@ -274,13 +296,18 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         
         if len(df_single_out)>= (knn+1):
             # Pass full subset for KNN, but only replace the single-out indices
+            subgroup_neighbor_indices = _get_cached_neighbor_indices(
+                fold_cache,
+                (class_tuple[0], class_tuple[1]),
+            )
             replaced = apply_private_smote_replace(
                 df_subset.drop(columns=['single_out']), 
                 epsilon, 
                 len(df_single_out), 
                 knn, 
                 replace=True,
-                single_out_indices=df_single_out.index.tolist()
+                single_out_indices=df_single_out.index.tolist(),
+                precomputed_neighbor_indices=subgroup_neighbor_indices,
             )
             if single_out_only_mode:
                 replaced['single_out'] = 1
@@ -320,7 +347,21 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             print("Unique protected values (if included in data):", df_subset['sex'].unique())
             '''
             
-            augmented = apply_private_smote_new(df_subset.drop(columns=["single_out"]), epsilon, num_samples, False, knn, k, key_vars, df_subset['single_out'])
+            subgroup_neighbor_indices = _get_cached_neighbor_indices(
+                fold_cache,
+                (class_tuple[0], class_tuple[1]),
+            )
+            augmented = apply_private_smote_new(
+                df_subset.drop(columns=["single_out"]),
+                epsilon,
+                num_samples,
+                False,
+                knn,
+                k,
+                key_vars,
+                df_subset['single_out'],
+                precomputed_neighbor_indices=subgroup_neighbor_indices,
+            )
             # Drop "highest_risk" column if it exists
             if 'highest_risk' in augmented.columns:
                 augmented = augmented.drop(columns=['highest_risk'])
@@ -364,6 +405,7 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         final_df = final_df.drop(columns=['single_out'])
     if 'synthetic' in final_df.columns:
         final_df = final_df.drop(columns=['synthetic'])
+    
     '''
     print("\nFinal subclass sizes:")
     for class_tuple in df_minority:

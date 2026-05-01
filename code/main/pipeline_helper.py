@@ -4,6 +4,8 @@ import os
 import numpy as np
 import pandas as pd
 import re
+from sklearn.neighbors import NearestNeighbors as NN
+from sklearn.preprocessing import StandardScaler
 
 def get_key_vars(file_name, key_vars_file):
     '''
@@ -270,6 +272,46 @@ def binary_columns_percentage(input_file, class_column):
     }
 
     return binary_cols, binary_percentages
+
+
+def build_fold_subgroup_cache(train_data, class_column, protected_attribute, qi, max_knn):
+    """Build a fold-level cache of subgroup feature matrices and neighbor indices."""
+    fold_cache = {
+        "qi": qi,
+        "class_column": class_column,
+        "protected_attribute": protected_attribute,
+        "max_knn": max_knn,
+        "subgroups": {},
+    }
+
+    subgroup_cols = [class_column, protected_attribute]
+    for subgroup_key, subgroup_df in train_data.groupby(subgroup_cols, dropna=False):
+        subgroup_data = subgroup_df.reset_index(drop=True).copy()
+        feature_frame = subgroup_data.drop(columns=[class_column], errors="ignore")
+        feature_frame = feature_frame.drop(columns=["single_out", "synthetic"], errors="ignore")
+
+        if feature_frame.empty or len(feature_frame) <= max_knn:
+            fold_cache["subgroups"][subgroup_key] = {
+                "data": subgroup_data,
+                "feature_frame": feature_frame,
+                "standardized_data": None,
+                "neighbor_indices": None,
+            }
+            continue
+
+        encoded_frame = pd.get_dummies(feature_frame, drop_first=True)
+        standardized_data = StandardScaler().fit_transform(encoded_frame)
+        nn = NN(n_neighbors=max_knn + 1).fit(standardized_data)
+        neighbor_indices = nn.kneighbors(standardized_data, return_distance=False)
+
+        fold_cache["subgroups"][subgroup_key] = {
+            "data": subgroup_data,
+            "feature_frame": encoded_frame,
+            "standardized_data": standardized_data,
+            "neighbor_indices": neighbor_indices,
+        }
+
+    return fold_cache
 
 def print_class_combinations(dataset_name=None, dataset=None, class_column=None, protected_attributes=None):
     """
