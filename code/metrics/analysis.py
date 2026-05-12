@@ -3,9 +3,12 @@ import re
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import KBinsDiscretizer
+from sklearn.model_selection import StratifiedKFold
+import warnings
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter, process_sensitive_attributes
+from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter, process_sensitive_attributes, get_continuous_columns
  
 
 def average_fairness_by_epsilon(input_folder):
@@ -552,7 +555,7 @@ def print_average_di(input_folder):
     combined_df["DI"] = pd.to_numeric(combined_df["DI"], errors="coerce")
     avg_di = combined_df["DI"].mean()
     
-    print(f"\nAverage DI (all files):")
+    print(f"\nAverage DI of folder {input_folder}:")
     print(f"Average DI: {avg_di:.4f}")
     print(f"Number of rows: {len(combined_df)}")
 
@@ -967,10 +970,383 @@ def replace_column_with_original(altered_path, original_path, column_name, new_p
         altered_df.to_csv(new_path, index=False)
         print(f"Saved new dataset with {transform_name}-transformed '{column_name}' from original to {new_path}")
 
+def print_single_outs_by_qi(
+    dataset_name,
+    binning_strategies=("uniform", "quantile", "kmeans"),
+    by_folds=False,
+    n_splits=5,
+    random_state=42,
+):
+    """
+    Print the number of single-outs for a dataset under each of its QIs.
+
+    The dataset is loaded using the same dataset-name lookup pattern as
+    print_class_combinations, and the QIs are read from key_vars.csv.
+
+    Args:
+        dataset_name (str): Dataset identifier, for example "56.csv" or "56".
+        binning_strategies (tuple[str] | list[str]): Binning strategies to evaluate.
+            Valid values are "uniform", "quantile", and "kmeans".
+        by_folds (bool): If True, compute results per fold using StratifiedKFold.
+        n_splits (int): Number of folds when by_folds=True.
+        random_state (int): Seed used in StratifiedKFold when by_folds=True.
+    """
+
+    dataset_key = os.path.splitext(dataset_name)[0] if dataset_name else None
+    if dataset_key is None:
+        raise ValueError("dataset_name must be provided.")
+
+    dataset_file = f"{dataset_key}.csv"
+    candidate_paths = [
+        os.path.join("datasets", "inputs", "test", dataset_file),
+    ]
+
+    file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+    if file_path is None:
+        raise ValueError(f"Dataset file not found for '{dataset_key}'. Checked: {candidate_paths}")
+
+    data = pd.read_csv(file_path)
+    key_vars_list = get_key_vars(dataset_file, "key_vars.csv")
+    continuous_columns = get_continuous_columns(str(dataset_key), "continuous_attributes.csv")
+    total_rows = len(data)
+    k_values = [3, 5]
+    valid_strategies = {"quantile", "uniform", "kmeans"}
+
+    invalid_strategies = [s for s in binning_strategies if s not in valid_strategies]
+    if invalid_strategies:
+        raise ValueError(
+            f"Invalid binning strategies: {invalid_strategies}. "
+            f"Valid options are: {sorted(valid_strategies)}"
+        )
+
+    def _print_single_outs_for_subset(data_subset, subset_title, fold_idx=None, fold_results=None):
+        subset_rows = len(data_subset)
+        print(f"\n{subset_title}")
+        print(f"Total samples: {subset_rows}")
+
+        for strategy in binning_strategies:
+            print(f"\nBinning strategy: {strategy}")
+
+            for k in k_values:
+                print(f"\nSingle-outs for dataset '{dataset_key}' (k={k}):")
+
+                for qi_idx, qi_vars in enumerate(key_vars_list):
+                    missing_columns = [col for col in qi_vars if col not in data_subset.columns]
+                    if missing_columns:
+                        print(f"QI{qi_idx}: missing columns {missing_columns}, skipping")
+                        continue
+
+                    print(f"QI{qi_idx} features: {', '.join(qi_vars)}")
+
+                    # Match new_apply: bin continuous columns that are part of the current QI.
+                    data_qi = data_subset.copy()
+                    for col in continuous_columns:
+                        if col in data_qi.columns and col in qi_vars:
+                            kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy=strategy)
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("ignore", UserWarning)
+                                warnings.simplefilter("ignore", FutureWarning)
+                                data_qi[col] = kbd.fit_transform(data_qi[[col]])
+
+                    kgrp = data_qi.groupby(qi_vars)[qi_vars[0]].transform(len)
+                    single_out = np.where(kgrp < k, 1, 0)
+                    single_out_count = int(single_out.sum())
+                    single_out_pct = (single_out_count / subset_rows) * 100 if subset_rows else 0
+
+                    print(f"QI{qi_idx}: {single_out_count} single-outs ({single_out_pct:.2f}%)")
+
+                    if fold_results is not None and fold_idx is not None:
+                        fold_results.append({
+                            "fold": fold_idx,
+                            "strategy": strategy,
+                            "k": k,
+                            "qi_idx": qi_idx,
+                            "qi_features": ", ".join(qi_vars),
+                            "single_out_count": single_out_count,
+                            "single_out_pct": single_out_pct,
+                        })
+
+    if not by_folds:
+        _print_single_outs_for_subset(data, f"Dataset '{dataset_key}'")
+        return
+
+    class_column = get_class_column(dataset_key, "class_attribute.csv")
+    protected_attributes = process_protected_attributes(dataset_key, "protected_attributes.csv")
+
+    for protected_attribute in protected_attributes:
+        if protected_attribute not in data.columns:
+            print(f"\nProtected attribute '{protected_attribute}' not found in dataset columns, skipping fold analysis.")
+            continue
+
+        strat_labels = (
+            data[class_column].astype(str) + "_" +
+            data[protected_attribute].astype(str)
+        )
+
+        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+        print(f"\n=== Fold-wise single-outs stratified by ({class_column}, {protected_attribute}) ===")
+        fold_results = []
+
+        for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels), start=1):
+            train_data = data.iloc[train_idx].reset_index(drop=True)
+            _print_single_outs_for_subset(
+                train_data,
+                f"Fold {fold_idx} (train split)",
+                fold_idx=fold_idx,
+                fold_results=fold_results,
+            )
+
+        if fold_results:
+            summary_df = pd.DataFrame(fold_results)
+            grouped = (
+                summary_df
+                .groupby(["strategy", "k", "qi_idx", "qi_features"], as_index=False)
+                .agg(
+                    mean_single_out_pct=("single_out_pct", "mean"),
+                    std_single_out_pct=("single_out_pct", "std"),
+                    min_single_out_pct=("single_out_pct", "min"),
+                    max_single_out_pct=("single_out_pct", "max"),
+                )
+            )
+            grouped["std_single_out_pct"] = grouped["std_single_out_pct"].fillna(0.0)
+
+            print("\nFold Summary (single-out % across folds):")
+            for _, row in grouped.iterrows():
+                print(
+                    f"strategy={row['strategy']} | k={int(row['k'])} | "
+                    f"QI{int(row['qi_idx'])} ({row['qi_features']}) | "
+                    f"mean={row['mean_single_out_pct']:.2f}% | "
+                    f"std={row['std_single_out_pct']:.2f}% | "
+                    f"min={row['min_single_out_pct']:.2f}% | "
+                    f"max={row['max_single_out_pct']:.2f}%"
+                )
+
+
+def analyze_fold_csvs(
+    csv_paths_or_folder,
+    class_column=None,
+    protected_column=None,
+    output_csv="fold_analysis_summary.csv",
+):
+    """
+    Analyze five fold-level CSVs with identical parameters.
+
+    For each CSV, prints:
+        - total rows
+        - class distribution
+        - protected-attribute distribution
+        - subgroup counts by (class, protected)
+        - single_out and synthetic counts when those columns exist
+
+    Also saves:
+        - a fold-level summary CSV
+        - a subgroup comparison CSV in long format
+        - a numeric metric comparison CSV across folds
+
+    Parameters:
+        csv_paths_or_folder: Either a folder containing the five CSVs or an iterable of CSV paths.
+        class_column (str, optional): Column to use as the class label. If omitted, the function tries to infer it.
+        protected_column (str, optional): Column to use as the protected attribute. If omitted, the function tries to infer it.
+        output_csv (str): Path for the fold summary CSV.
+    """
+
+    def _resolve_csv_paths(source):
+        if isinstance(source, str):
+            if os.path.isdir(source):
+                paths = [
+                    os.path.join(source, name)
+                    for name in sorted(os.listdir(source))
+                    if name.endswith(".csv")
+                ]
+            elif os.path.isfile(source):
+                paths = [source]
+            else:
+                raise FileNotFoundError(f"Path not found: {source}")
+        else:
+            paths = [str(path) for path in source]
+
+        if not paths:
+            raise ValueError("No CSV files found to analyze.")
+
+        return paths
+
+    def _infer_column(df, candidates):
+        for candidate in candidates:
+            if candidate in df.columns:
+                return candidate
+        return None
+
+    def _format_counts(series):
+        counts = series.value_counts(dropna=False)
+        parts = []
+        for value, count in counts.items():
+            label = "nan" if pd.isna(value) else str(value)
+            parts.append(f"{label}:{int(count)}")
+        return " | ".join(parts)
+
+    def _safe_pct(count, total):
+        return (100.0 * count / total) if total else 0.0
+
+    csv_paths = _resolve_csv_paths(csv_paths_or_folder)
+    fold_summary_rows = []
+    subgroup_rows = []
+    numeric_fold_metrics = {}
+
+    print("\n=== Fold CSV Analysis ===\n")
+    print(f"CSV files: {len(csv_paths)}")
+
+    for fold_index, csv_path in enumerate(csv_paths, start=1):
+        fold_name = os.path.basename(csv_path)
+        df = pd.read_csv(csv_path)
+
+        inferred_class_column = class_column or _infer_column(
+            df,
+            ["class", "Class", "label", "target", "y", "outcome", "Outcome"],
+        )
+        inferred_protected_column = protected_column or _infer_column(
+            df,
+            ["protected", "protected_attribute", "sensitive", "sensitive_attribute", "race", "sex", "gender"],
+        )
+
+        if inferred_class_column is None:
+            raise ValueError(
+                f"Could not infer class column for {csv_path}. Pass class_column explicitly."
+            )
+        if inferred_protected_column is None:
+            raise ValueError(
+                f"Could not infer protected column for {csv_path}. Pass protected_column explicitly."
+            )
+
+        total_rows = len(df)
+        class_counts = _format_counts(df[inferred_class_column])
+        protected_counts = _format_counts(df[inferred_protected_column])
+
+        print(f"\nFold {fold_index}: {fold_name}")
+        print(f"  rows: {total_rows}")
+        print(f"  class ({inferred_class_column}): {class_counts}")
+        print(f"  protected ({inferred_protected_column}): {protected_counts}")
+
+        subgroup_counts = (
+            df.groupby([inferred_class_column, inferred_protected_column], dropna=False)
+            .size()
+            .reset_index(name="count")
+            .sort_values("count", ascending=False)
+        )
+
+        print("  subgroup counts:")
+        for _, row in subgroup_counts.iterrows():
+            subgroup_label = f"({row[inferred_class_column]}, {row[inferred_protected_column]})"
+            print(f"    {subgroup_label}: {int(row['count'])}")
+            subgroup_rows.append(
+                {
+                    "fold": fold_index,
+                    "file": fold_name,
+                    "class_column": inferred_class_column,
+                    "protected_column": inferred_protected_column,
+                    "class_value": row[inferred_class_column],
+                    "protected_value": row[inferred_protected_column],
+                    "count": int(row["count"]),
+                    "pct_of_fold": _safe_pct(int(row["count"]), total_rows),
+                }
+            )
+
+        single_out_count = None
+        if "single_out" in df.columns:
+            single_out_count = int(pd.to_numeric(df["single_out"], errors="coerce").fillna(0).sum())
+            print(f"  single_out: {single_out_count} ({_safe_pct(single_out_count, total_rows):.2f}%)")
+        elif "singling_out_value" in df.columns:
+            single_out_count = int(pd.to_numeric(df["singling_out_value"], errors="coerce").fillna(0).sum())
+            print(f"  singling_out_value: {single_out_count} ({_safe_pct(single_out_count, total_rows):.2f}%)")
+        else:
+            print("  single_out: column not found")
+
+        synthetic_count = None
+        if "synthetic" in df.columns:
+            synthetic_count = int(pd.to_numeric(df["synthetic"], errors="coerce").fillna(0).sum())
+            print(f"  synthetic: {synthetic_count} ({_safe_pct(synthetic_count, total_rows):.2f}%)")
+        elif "is_synthetic" in df.columns:
+            synthetic_count = int(pd.to_numeric(df["is_synthetic"], errors="coerce").fillna(0).sum())
+            print(f"  is_synthetic: {synthetic_count} ({_safe_pct(synthetic_count, total_rows):.2f}%)")
+        else:
+            print("  synthetic: column not found")
+
+        fold_summary_rows.append(
+            {
+                "fold": fold_index,
+                "file": fold_name,
+                "rows": total_rows,
+                "class_column": inferred_class_column,
+                "protected_column": inferred_protected_column,
+                "class_distribution": class_counts,
+                "protected_distribution": protected_counts,
+                "single_out_count": single_out_count,
+                "single_out_pct": _safe_pct(single_out_count, total_rows) if single_out_count is not None else np.nan,
+                "synthetic_count": synthetic_count,
+                "synthetic_pct": _safe_pct(synthetic_count, total_rows) if synthetic_count is not None else np.nan,
+            }
+        )
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        for column_name in numeric_cols:
+            if column_name not in numeric_fold_metrics:
+                numeric_fold_metrics[column_name] = []
+            column_values = pd.to_numeric(df[column_name], errors="coerce")
+            numeric_fold_metrics[column_name].append(
+                {
+                    "fold": fold_index,
+                    "file": fold_name,
+                    "mean": column_values.mean(),
+                    "std": column_values.std(),
+                }
+            )
+
+    summary_df = pd.DataFrame(fold_summary_rows).sort_values("fold")
+    summary_df.to_csv(output_csv, index=False)
+
+    subgroup_df = pd.DataFrame(subgroup_rows).sort_values(["fold", "count"], ascending=[True, False])
+    subgroup_output_csv = output_csv.replace(".csv", "_subgroups.csv")
+    subgroup_df.to_csv(subgroup_output_csv, index=False)
+
+    metric_rows = []
+    for column_name, fold_values in numeric_fold_metrics.items():
+        values_df = pd.DataFrame(fold_values)
+        metric_rows.append(
+            {
+                "metric": column_name,
+                "fold_mean_mean": values_df["mean"].mean(),
+                "fold_mean_std": values_df["mean"].std(),
+                "fold_mean_min": values_df["mean"].min(),
+                "fold_mean_max": values_df["mean"].max(),
+                "fold_mean_range": values_df["mean"].max() - values_df["mean"].min(),
+            }
+        )
+
+    metric_df = pd.DataFrame(metric_rows).sort_values("fold_mean_range", ascending=False)
+    metric_output_csv = output_csv.replace(".csv", "_metric_comparison.csv")
+    metric_df.to_csv(metric_output_csv, index=False)
+
+    print(f"\nSaved fold summary to {output_csv}")
+    print(f"Saved subgroup summary to {subgroup_output_csv}")
+    print(f"Saved metric comparison to {metric_output_csv}")
+
+    if not metric_df.empty:
+        print("\nTop numeric metrics by fold-to-fold range:")
+        for _, row in metric_df.head(10).iterrows():
+            print(
+                f"  {row['metric']}: range={row['fold_mean_range']:.6f}, "
+                f"mean={row['fold_mean_mean']:.6f}, std={row['fold_mean_std']:.6f}"
+            )
+
+    return {
+        "summary": summary_df,
+        "subgroups": subgroup_df,
+        "metrics": metric_df,
+    }
+
 
 if __name__ == "__main__":
     input_folder = "results_metrics/fairness_results/outputs_4/RF_42/8"
-    input_folder_improved = "results_metrics/fairness_results/outputs_4/german_log_decimals1/german"
+    input_folder_improved = "results_metrics/fairness_results/outputs_4/tomek_class_only/compas"
     linkability_folder = "results_metrics/linkability_results/outputs_4/german_qis_full/german"
 
     
@@ -981,9 +1357,38 @@ if __name__ == "__main__":
     #print_average_di_excluding_epsilons(input_folder, [0.1, 0.5, 1.0, 5.0])
     #print_average_di_excluding_qi(input_folder, [0, 1, 3, 4])
     #print_average_di_excluding_both(input_folder, [0.1, 0.5, 1.0, 5.0], [0,2,3,4])
-    #print_average_di(input_folder_improved)
     #print_average_di_by_threshold(input_folder_improved)
     #print_average_privacy_metrics(linkability_folder)
+
+    print_average_di(input_folder_improved)
+
+    '''
+    analyze_fold_csvs(
+    [
+        "datasets/outputs/outputs_4/new_treated_kmeans_debug/law/fold1/law_eps0.5_k5_knn3_aug0.4_fairprivateSMOTE_race_QI1.csv",
+        "datasets/outputs/outputs_4/new_treated_kmeans_debug/law/fold2/law_eps0.5_k5_knn3_aug0.4_fairprivateSMOTE_race_QI1.csv",
+        "datasets/outputs/outputs_4/new_treated_kmeans_debug/law/fold3/law_eps0.5_k5_knn3_aug0.4_fairprivateSMOTE_race_QI1.csv",
+        "datasets/outputs/outputs_4/new_treated_kmeans_debug/law/fold4/law_eps0.5_k5_knn3_aug0.4_fairprivateSMOTE_race_QI1.csv",
+        "datasets/outputs/outputs_4/new_treated_kmeans_debug/law/fold5/law_eps0.5_k5_knn3_aug0.4_fairprivateSMOTE_race_QI1.csv",
+    ],
+    class_column="pass_bar",
+    protected_column="race",
+    output_csv="fold_analysis_summary.csv",
+)
+'''
+    '''
+    dataset_name = "law"
+    print_single_outs_by_qi(
+        "law.csv",
+        by_folds=True,
+        binning_strategies=("uniform", "quantile", "kmeans"),
+        n_splits=5,
+        random_state=42
+    )
+    '''
+
+
+
     
     '''
     compute_singleouts_di_recall(
@@ -1001,7 +1406,8 @@ if __name__ == "__main__":
         new_path="datasets/newgerman/german.csv"
     )
        ''' 
-    #calculate_column_skew("datasets/newgerman/german.csv", "credit-amount")
+    
+    #calculate_column_skew("datasets/original_datasets/fair/german.csv", "credit-amount")
     
 
     

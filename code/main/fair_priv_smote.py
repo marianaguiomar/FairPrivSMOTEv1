@@ -9,13 +9,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 #from main.pipeline_helper import process_protected_attributes, check_protected_attribute, get_class_column, get_key_vars, binary_columns_percentage
 
 
-def smote_v3(data, dataset_name, output_folder, class_column, protected_attribute, qi, qi_index, epsilon, k, knn, augmentation_rate, removal_strategy="majority_only", extra_rules=None, binning=None, fold_cache=None):
+def smote_v3(data, dataset_name, output_folder, class_column, protected_attribute, qi, qi_index, epsilon, k, knn, augmentation_rate, removal_strategy="majority_only", extra_rules=None, binning=None, fold_cache=None, qi_only_visualization=False):
     print(f"\nProcessing dataset: {dataset_name}, epsilon: {epsilon}, protected: {protected_attribute}, QI{qi_index}")
 
     output_filename = f"{dataset_name}_eps{epsilon}_k{k}_knn{knn}_aug{augmentation_rate}_fairprivateSMOTE_{protected_attribute}_QI{qi_index}.csv"
     debug_binned_path = os.path.join("trash", output_filename)
 
-    smote_df = new_apply(
+    smote_df, fitted_binners = new_apply(
         data,
         dataset_name,
         protected_attribute,
@@ -29,6 +29,8 @@ def smote_v3(data, dataset_name, output_folder, class_column, protected_attribut
         extra_rules,
         binning=binning,
         fold_cache=fold_cache,
+        output_folder=output_folder,
+        qi_only_visualization=qi_only_visualization,
         debug_binned_path=debug_binned_path,
     )
     '''
@@ -44,7 +46,8 @@ def smote_v3(data, dataset_name, output_folder, class_column, protected_attribut
     # Save the processed file with "_[epsilon]" and "_QI[qi]" added to the filename
     if smote_df is None:
         print(f"Skipping dataset {dataset_name} due to insufficient data for SMOTE.")
-        return
+        return None, fitted_binners
     output_path = os.path.join(output_folder, output_filename)
     smote_df.to_csv(output_path, index=False)
+    return output_path, fitted_binners
     #print(f"Saved processed file: {output_path}\n")

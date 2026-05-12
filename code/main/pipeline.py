@@ -22,22 +22,86 @@ from others.fair import generate_samples
 
 
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
+#epsilon_values = [0.5, 1.0, 5.0]
 k_values = [3,5]
 knn_values = [3,5]
 #augmentation_values = [0.6, 0.8]
 augmentation_values = [0.3, 0.4]
 per_values = [2, 3]
 '''
-epsilon_values = [1.0]
-k_values = [5]
-knn_values = [5]
-augmentation_values = [0.3]
+epsilon_values = [0.5]
+k_values = [3]
+knn_values = [3]
+augmentation_values = [0.4]
 per_values = [2]
 '''
 
 
+def _print_group_counts(df, class_column, protected_attribute, fold_label):
+    total_rows = len(df)
+    print(f"\n{fold_label}")
+    print(f"  Total samples: {total_rows}")
 
-def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None, binning=None):
+    class_counts = df[class_column].value_counts().sort_index()
+    print(f"  {class_column} distribution:")
+    for cls, count in class_counts.items():
+        pct = (count / total_rows) * 100 if total_rows else 0
+        print(f"    - Class {cls}: {count} ({pct:.2f}%)")
+
+    protected_counts = df[protected_attribute].value_counts().sort_index()
+    print(f"  {protected_attribute} distribution:")
+    for value, count in protected_counts.items():
+        pct = (count / total_rows) * 100 if total_rows else 0
+        print(f"    - Protected {value}: {count} ({pct:.2f}%)")
+
+    subgroup_counts = (
+        df.groupby([class_column, protected_attribute])
+        .size()
+        .reset_index(name="count")
+        .sort_values([class_column, protected_attribute])
+    )
+    print(f"  Subgroup distribution by ({class_column}, {protected_attribute}):")
+    for _, row in subgroup_counts.iterrows():
+        pct = (row["count"] / total_rows) * 100 if total_rows else 0
+        print(
+            f"    - Class {row[class_column]}, Protected {row[protected_attribute]}: "
+            f"{row['count']} ({pct:.2f}%)"
+        )
+
+
+def _print_single_out_summary(df, key_vars, k_values, fold_label):
+    print(f"  Single-out summary for {fold_label}:")
+    for qi_idx, qi in enumerate(key_vars):
+        missing_columns = [col for col in qi if col not in df.columns]
+        if missing_columns:
+            print(f"    - QI{qi_idx} skipped (missing columns: {missing_columns})")
+            continue
+
+        for k in k_values:
+            grouped_sizes = df.groupby(qi)[qi[0]].transform(len)
+            single_out_mask = grouped_sizes < k
+            single_out_count = int(single_out_mask.sum())
+            single_out_pct = (single_out_count / len(df)) * 100 if len(df) else 0
+            qi_name = ", ".join(qi)
+            print(
+                f"    - QI{qi_idx} [{qi_name}], k={k}: "
+                f"{single_out_count} single-outs ({single_out_pct:.2f}%)"
+            )
+
+
+def print_fold_composition(train_data, test_data, class_column, protected_attribute, key_vars, k_values, fold_idx):
+    """Print a fold-by-fold breakdown of train/test composition and single-outs."""
+    fold_label = f"=== Fold {fold_idx + 1} Composition for protected attribute '{protected_attribute}' ==="
+    print(f"\n{fold_label}")
+    _print_group_counts(train_data, class_column, protected_attribute, "Train split")
+    _print_single_out_summary(train_data, key_vars, k_values, "Train split")
+    _print_group_counts(test_data, class_column, protected_attribute, "Test split")
+    _print_single_out_summary(test_data, key_vars, k_values, "Test split")
+    print("=" * len(fold_label))
+
+
+
+def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_values, final_folder_name=None, removal_strategy=None, extra_rules=None, binning=None, qi_only_visualization=False):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
     if final_folder_name is None:
@@ -94,6 +158,10 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
 
             skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
             
+            # Start timing the 5-fold cross-validation for this protected attribute
+            cv_start_time = time.time()
+            print(f"Starting 5-fold CV for protected '{protected_attribute}' at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cv_start_time))}")
+
             for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
                 process = psutil.Process(os.getpid())
                 print("Memory used (MB):", process.memory_info().rss / 1024**2)
@@ -101,10 +169,22 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 test_data = data.iloc[test_idx].reset_index(drop=True)
                 output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
                 os.makedirs(output_fold_folder, exist_ok=True)
-
+                '''
+                print_fold_composition(
+                    train_data=train_data,
+                    test_data=test_data,
+                    class_column=class_column,
+                    protected_attribute=protected_attribute,
+                    key_vars=key_vars,
+                    k_values=k_values,
+                    fold_idx=fold_idx,
+                )
+                '''
                 invalid = True
+                fitted_binners_by_file = {}
                 
                 for ix, qi in enumerate(key_vars):
+                    #qi = key_vars[1]
                     fold_cache = build_fold_subgroup_cache(
                         train_data,
                         class_column,
@@ -116,7 +196,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                         for k in k_values:
                             for knn in knn_values:
                                 for augmentation_rate in augmentation_values:
-                                    #ix = 2
+                                    #ix = 1
                                     #qi = key_vars[ix]
                                     '''
                                     print("Total dataset size at before smote_v3:", len(train_data))
@@ -130,32 +210,47 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                     #print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
                                     #train_data_before = train_data.copy()
                                     train_data_qi = train_data.copy(deep=True)
-                                    smote_v3(
-                                        data=train_data_qi,
-                                        dataset_name=dataset_name, 
-                                        output_folder=output_fold_folder, 
-                                        class_column=class_column, 
-                                        protected_attribute=protected_attribute, 
-                                        qi=qi, 
-                                        qi_index=ix, 
-                                        epsilon=epsilon, 
-                                        k=k, 
-                                        knn=knn,
-                                        augmentation_rate=augmentation_rate,
-                                        removal_strategy=removal_strategy,
-                                        extra_rules=extra_rules,
-                                        binning=binning,
-                                        fold_cache=fold_cache)
-                                    
+                                    output_path, fitted_binners = smote_v3(
+                                    data=train_data_qi,
+                                    dataset_name=dataset_name, 
+                                    output_folder=output_fold_folder, 
+                                    class_column=class_column, 
+                                    protected_attribute=protected_attribute, 
+                                    qi=qi, 
+                                    qi_index=ix, 
+                                    epsilon=epsilon, 
+                                    k=k, 
+                                    knn=knn,
+                                    augmentation_rate=augmentation_rate,
+                                    removal_strategy=removal_strategy,
+                                    extra_rules=extra_rules,
+                                    binning=binning,
+                                    fold_cache=fold_cache,
+                                    qi_only_visualization=qi_only_visualization
+                                    )
+                                    if output_path is not None and fitted_binners:
+                                        fitted_binners_by_file[os.path.basename(output_path)] = fitted_binners
                                     #print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
                                     #print((train_data_before != train_data).sum())
                                         
                                     invalid = False
                 if not invalid:
-                    process_fairness(output_fold_folder, test_data, output_file=f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv", protected_attribute=protected_attribute)
+                    process_fairness(
+                        output_fold_folder,
+                        test_data,
+                        output_file=f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv",
+                        protected_attribute=protected_attribute,
+                        fitted_binners_by_file=fitted_binners_by_file,
+                    )
                     #process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
                     #process_similarity(output_fold_folder, train_data, output_file=f"results_metrics/similarity_results/outputs_4/{final_folder_name}/similarity_intermediate.csv")
-                    #print("")    
+                    print("")    
+                
+                # End timing for the 5-fold CV and print elapsed time
+                
+                cv_end_time = time.time()
+                elapsed = cv_end_time - cv_start_time
+                print(f"Completed 5-fold CV for protected '{protected_attribute}'. Elapsed: {time.strftime('%H:%M:%S', time.gmtime(elapsed))}")
                 
                 process = psutil.Process(os.getpid())
                 print("Memory used (MB) after:", process.memory_info().rss / 1024**2)
@@ -306,18 +401,19 @@ def run_original_fairsmote(input_folder, final_folder_name):
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
 
-input_folder_name = "adult"
-final_folder_name = "new_treated_uniform_debug"
-#input_folder_name = "law"
-#final_folder_name = "new_treated_kmeans_debug"
+input_folder_name = "compas"
+final_folder_name = "tomek_class_only"
+#input_folder_name = "german"
+#final_folder_name = "german_debug"
 method_number = "3"
 
-removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
+removal_strategy = 'class_only'  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None  # Options: "synthetic_only", "single_out_only", None
-binning = 'uniform'  # Options: 'uniform', 'quantile', 'kmeans', None
+binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
+qi_only_visualization = True  # Set to True to enable QI-only visualization mode
 
 ### MY SMOTE ###
-method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning)
+method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
 
 ### ORIGINAL SMOTE ###
 #run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)

@@ -1,5 +1,7 @@
 import numpy as np
 import copy, math
+import os
+import pickle
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, classification_report
@@ -14,6 +16,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
+from main.pipeline_helper import get_continuous_columns
 
 
 
@@ -50,11 +53,11 @@ def get_counts(y_test, y_pred, test_df, biased_col, class_column, metric='aod'):
     print("\n--- Group sizes ---")
     print(debug_df.groupby("protected").size())
     # ===================================
-    '''
+    
 
 
     #print(np.unique(y_pred, return_counts=True))
-
+    '''
     TN, FP, FN, TP = confusion_matrix(y_test, y_pred).ravel()
     #print(f"confusion matrix -> TN: {TN}, FP: {FP}, FN: {FN}, TP: {TP}")
 
@@ -195,7 +198,7 @@ def measure_final_score(test_df, y_test, y_pred, biased_col, metric, class_colum
 
 
 # Function to compute all metrics
-def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column):
+def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column, fitted_binners=None):
     train_data = pd.read_csv(file_path)
 
     #print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
@@ -206,6 +209,21 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
 
     X_test = test_fold.drop(columns=[class_column])
     y_test = test_fold[class_column]
+
+    dataset_name = os.path.basename(file_path).split("_eps")[0]
+    continuous_columns = get_continuous_columns(dataset_name, "continuous_attributes.csv")
+
+    if fitted_binners is None:
+        binning_metadata_path = file_path.replace(".csv", ".binning.pkl")
+        if os.path.exists(binning_metadata_path):
+            with open(binning_metadata_path, "rb") as binning_file:
+                fitted_binners = pickle.load(binning_file)
+
+    if fitted_binners:
+        X_test = X_test.copy()
+        for column_name, binner in fitted_binners.items():
+            if column_name in X_test.columns and column_name in continuous_columns:
+                X_test[column_name] = binner.transform(X_test[[column_name]]).ravel()
 
     # Standardize features
     #scaler = StandardScaler()

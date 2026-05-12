@@ -423,7 +423,7 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
 
 # ------ PERFORMANCE AND FAIRNESS
     
-def average_fairness(input_folder, test_fold, std=False, original=False, protected_attribute=None, fair=False):
+def average_fairness(input_folder, test_fold, std=False, original=False, protected_attribute=None, fair=False, fitted_binners_by_file=None):
     """
     Calculate the average (and optionally standard deviation) of fairness metrics from multiple files,
     ignoring NaN values.
@@ -490,7 +490,16 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
             class_column = get_class_column(dataset_name, "class_attribute.csv")
 
             print(f"\nProcessing fairness of file {idx}/{total}: {file_path} with protected attribute {protected_attribute} and class {class_column}")
-            fairness_metrics = compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column)
+            fitted_binners = None
+            if fitted_binners_by_file:
+                fitted_binners = fitted_binners_by_file.get(file_name)
+            fairness_metrics = compute_fairness_metrics(
+                file_path,
+                test_fold,
+                protected_attribute,
+                class_column,
+                fitted_binners=fitted_binners,
+            )
             if not original:
                 file_metrics = {"File": file_name}
             else:
@@ -539,7 +548,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
 
     return average_fairness
 
-def process_fairness(input_folder, test_fold, output_file="results_metrics/fairness_results/fairness_intermediate.csv", std=False, original=False, protected_attribute=None, fair=False):
+def process_fairness(input_folder, test_fold, output_file="results_metrics/fairness_results/fairness_intermediate.csv", std=False, original=False, protected_attribute=None, fair=False, fitted_binners_by_file=None):
     """
     Process a single folder and write the calculated fairness statistics to a CSV file.
 
@@ -555,7 +564,15 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
     #print(f"Processing folder: {input_folder}")
 
     # ------- calculate average -------
-    result = average_fairness(input_folder, test_fold, std=std, original=original, protected_attribute=protected_attribute, fair=fair)
+    result = average_fairness(
+        input_folder,
+        test_fold,
+        std=std,
+        original=original,
+        protected_attribute=protected_attribute,
+        fair=fair,
+        fitted_binners_by_file=fitted_binners_by_file,
+    )
 
     print(result)
 
