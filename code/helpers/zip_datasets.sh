@@ -1,7 +1,6 @@
 #!/bin/bash
 
-BASE="FairPrivSMOTEv1/datasets/outputs/outputs_4"
-GIVEN_FOLDER="$1"
+BASE="FairPrivSMOTEv1/datasets/outputs/outputs_4"GIVEN_FOLDER="$1"
 
 TARGET_DIR="$BASE/$GIVEN_FOLDER"
 
