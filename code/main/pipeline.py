@@ -400,6 +400,33 @@ def run_original_fairsmote(input_folder, final_folder_name):
             else:
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
+def run_all_binning_methods(input_folder_name):
+    """
+    Run method_3 with all four binning methods (None, 'uniform', 'quantile', 'kmeans').
+    Output folders are named after the binning method used.
+    
+    Args:
+        input_folder_name (str): Name of the input dataset folder (e.g., 'compas', 'german')
+    """
+    binning_methods = [None, 'quantile', 'uniform', 'kmeans']
+    
+    for binning_method in binning_methods:
+        # Set output folder name based on binning method
+        if binning_method is None:
+            #final_folder_name = f"{input_folder_name}_no_binning"
+            final_folder_name = "none"
+        else:
+            #final_folder_name = f"{input_folder_name}_{binning_method}"
+            final_folder_name = binning_method
+        
+        print(f"\n{'='*60}")
+        print(f"Running method_3 with binning method: {binning_method}")
+        print(f"Output folder: {final_folder_name}")
+        print(f"{'='*60}\n")
+        
+        method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
+
+run_all_binning_methods("fair")
 
 input_folder_name = "compas"
 final_folder_name = "tomek_class_only"
@@ -413,7 +440,7 @@ binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
 qi_only_visualization = True  # Set to True to enable QI-only visualization mode
 
 ### MY SMOTE ###
-method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
+#method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
 
 ### ORIGINAL SMOTE ###
 #run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
