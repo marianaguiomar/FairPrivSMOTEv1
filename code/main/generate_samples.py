@@ -881,7 +881,7 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
-        print(f"number of majority class single_out: {len(df_majority_single_out)}")
+        #print(f"number of majority class single_out: {len(df_majority_single_out)}")
         
         if len(df_majority_single_out) >= (knn+1):
             # Pass full majority class for KNN, but only replace the single-out indices
@@ -913,13 +913,13 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     cleaned_minority_data = []
 
     for class_tuple, df_subset in df_minority.items():
-        
+        '''
         print(f"\n--- MINORITY SUBGROUP {class_tuple} BEFORE AUGMENTATION ---")
         print("Total size:", len(df_subset))
         print("Single-outs:", len(df_subset[df_subset['single_out']==1]))
         print("Non-single-outs:", len(df_subset[df_subset['single_out']!=1]))
         print("Target to generate:", samples_to_increase[class_tuple] if majority else int(len(df_subset)*augmentation_rate))
-        
+        '''
         #print(f"class_tuple: {class_tuple}")
         df_single_out = df_subset[df_subset['single_out'] == 1]
         
