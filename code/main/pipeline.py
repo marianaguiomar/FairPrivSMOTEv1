@@ -115,6 +115,13 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
     for file_name in os.listdir(input_folder):
         if not file_name.endswith(".csv"):
             continue
+
+        done = ["3.csv", "13.csv", "23.csv", "33.csv", "37.csv", "55.csv", "56.csv", "compas.csv", "german.csv", "oulad.csv", "student.csv"]
+        if binning == "quantile":
+            if file_name in done:
+                print(f"{file_name} already processed with binning {binning}, skipping")
+                continue
+            
         file_path = os.path.join(input_folder, file_name)
         data = pd.read_csv(file_path)
         print(f"\nProcessing file: {file_name}")
@@ -163,6 +170,11 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
             print(f"Starting 5-fold CV for protected '{protected_attribute}' at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cv_start_time))}")
 
             for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
+
+                if binning=="quantile" and file_name=="credit.csv" and fold_idx!=4:
+                    print(f"fold {fold_idx} for dataset {file_name} with binning {binning} already processed, skipping")
+                    continue
+                
                 process = psutil.Process(os.getpid())
                 print("Memory used (MB):", process.memory_info().rss / 1024**2)
                 train_data = data.iloc[train_idx].reset_index(drop=True)
@@ -408,7 +420,8 @@ def run_all_binning_methods(input_folder_name):
     Args:
         input_folder_name (str): Name of the input dataset folder (e.g., 'compas', 'german')
     """
-    binning_methods = [None, 'quantile', 'uniform', 'kmeans']
+    #binning_methods = [None, 'quantile', 'uniform', 'kmeans']
+    binning_methods = ['quantile', 'uniform', 'kmeans']
     
     for binning_method in binning_methods:
         # Set output folder name based on binning method
@@ -424,22 +437,22 @@ def run_all_binning_methods(input_folder_name):
         print(f"Output folder: {final_folder_name}")
         print(f"{'='*60}\n")
         
-        method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
+        method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning_method, qi_only_visualization)
 
-run_all_binning_methods("fair")
-
+'''
 input_folder_name = "compas"
 final_folder_name = "tomek_class_only"
 #input_folder_name = "german"
 #final_folder_name = "german_debug"
 method_number = "3"
-
-removal_strategy = 'class_only'  # Options: "class_only", "majority_only", "subgroup_rules", None
+'''
+removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None  # Options: "synthetic_only", "single_out_only", None
-binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
+#binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
 qi_only_visualization = True  # Set to True to enable QI-only visualization mode
 
 ### MY SMOTE ###
+run_all_binning_methods("fair")
 #method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
 
 ### ORIGINAL SMOTE ###

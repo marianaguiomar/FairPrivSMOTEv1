@@ -840,7 +840,7 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     majority_class = max(category_counts, key=category_counts.get)
     maximum_count = category_counts[majority_class]
     reduced_maximum_count = int(maximum_count * augmentation_rate)  
-    print(f"Category counts: {category_counts}")
+    #print(f"Category counts: {category_counts}")
 
     # --- Step 3: Get minority classes and how many samples to add ---
     minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
