@@ -267,6 +267,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 process = psutil.Process(os.getpid())
                 print("Memory used (MB) after:", process.memory_info().rss / 1024**2)
 
+
 def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, per_values, final_folder_name):
     # creating output folder
     input_folder_name = os.path.basename(os.path.normpath(input_folder))
@@ -439,6 +440,44 @@ def run_all_binning_methods(input_folder_name):
         
         method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning_method, qi_only_visualization)
 
+def run_all_removal_strategies(input_folder):
+    """Run method_3 across all removal strategies.
+
+    Folder naming convention for removal strategies:
+      - class_only -> class
+      - majority_only -> majority
+      - subgroup_rules -> subgroup
+
+    This iterates binning in [None, 'uniform', 'quantile', 'kmeans'] and
+    removal strategies in [None, 'class_only', 'majority_only', 'subgroup_rules'].
+    """
+    removal_options = ['class_only', 'majority_only', 'subgroup_rules']
+    removal_map = {
+        'class_only': 'class',
+        'majority_only': 'majority',
+        'subgroup_rules': 'subgroup'
+    }
+
+    base_name = os.path.basename(os.path.normpath(input_folder))
+
+    # Only iterate removal strategies; binning is fixed to None
+    for removal in removal_options:
+        removal_label = removal_map.get(removal, str(removal))
+        final_folder_name = f"{base_name}_{removal_label}"
+        print(f"Running removal_strategy={removal!r} -> output folder: {final_folder_name}")
+
+        method_3(
+            input_folder,
+            epsilon_values,
+            k_values,
+            knn_values,
+            augmentation_values,
+            final_folder_name=final_folder_name,
+            removal_strategy=removal,
+            extra_rules=extra_rules,
+            binning=binning,
+            qi_only_visualization=False,
+        )
 '''
 input_folder_name = "compas"
 final_folder_name = "tomek_class_only"
@@ -446,13 +485,14 @@ final_folder_name = "tomek_class_only"
 #final_folder_name = "german_debug"
 method_number = "3"
 '''
-removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
+#removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None  # Options: "synthetic_only", "single_out_only", None
-#binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
+binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
 qi_only_visualization = True  # Set to True to enable QI-only visualization mode
 
 ### MY SMOTE ###
-run_all_binning_methods("fair")
+#run_all_binning_methods("fair")
+run_all_removal_strategies("fair")
 #method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
 
 ### ORIGINAL SMOTE ###
@@ -510,8 +550,8 @@ folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number
 folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
 features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 features_linkability = ['value', 'boundary_adherence']
-#for feature_name in features_fairness:
-#    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
+for feature_name in features_fairness:
+    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
 
 
 #for feature_name in features_linkability:
