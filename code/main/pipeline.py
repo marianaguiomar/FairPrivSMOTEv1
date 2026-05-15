@@ -459,6 +459,7 @@ def run_all_removal_strategies(input_folder):
     }
 
     base_name = os.path.basename(os.path.normpath(input_folder))
+    input_path = f"datasets/inputs/{input_folder}"
 
     # Only iterate removal strategies; binning is fixed to None
     for removal in removal_options:
@@ -467,15 +468,15 @@ def run_all_removal_strategies(input_folder):
         print(f"Running removal_strategy={removal!r} -> output folder: {final_folder_name}")
 
         method_3(
-            input_folder,
+            input_path,
             epsilon_values,
             k_values,
             knn_values,
             augmentation_values,
             final_folder_name=final_folder_name,
             removal_strategy=removal,
-            extra_rules=extra_rules,
-            binning=binning,
+            extra_rules=None,
+            binning=None,
             qi_only_visualization=False,
         )
 '''
