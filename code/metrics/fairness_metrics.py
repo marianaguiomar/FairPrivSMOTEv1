@@ -198,7 +198,7 @@ def measure_final_score(test_df, y_test, y_pred, biased_col, metric, class_colum
 
 
 # Function to compute all metrics
-def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column, fitted_binners=None):
+def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_column, fitted_binners=None, random_state=57):
     train_data = pd.read_csv(file_path)
 
     #print(f"Processing {file_path} fairness with protected attribute: {protected_attribute} and class_column {class_column}")
@@ -264,7 +264,7 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
         min_samples_split=2,
         min_samples_leaf=1,
         class_weight='balanced',  # important for fairness / imbalance
-        random_state=57,
+        random_state=random_state,
         n_jobs=-1
         ))
     ])

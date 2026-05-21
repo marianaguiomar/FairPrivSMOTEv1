@@ -423,7 +423,7 @@ def process_linkability(input_folder, train_fold, test_fold, output_file = "resu
 
 # ------ PERFORMANCE AND FAIRNESS
     
-def average_fairness(input_folder, test_fold, std=False, original=False, protected_attribute=None, fair=False, fitted_binners_by_file=None):
+def average_fairness(input_folder, test_fold, std=False, original=False, protected_attribute=None, fair=False, fitted_binners_by_file=None, random_state=57):
     """
     Calculate the average (and optionally standard deviation) of fairness metrics from multiple files,
     ignoring NaN values.
@@ -499,6 +499,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
                 protected_attribute,
                 class_column,
                 fitted_binners=fitted_binners,
+                random_state=random_state,
             )
             if not original:
                 file_metrics = {"File": file_name}
@@ -506,6 +507,8 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
                 file_metrics = {"File": f"{file_name}_{protected_attribute}"}
 
             for result_dict in fairness_metrics:  # iterate over list of dicts
+                result_dict = dict(result_dict)
+                result_dict["rf_seed"] = random_state
                 all_fairness_metrics.append(result_dict)
                 for metric, value in result_dict.items():
                     if metric in total_metrics and not (math.isnan(value) or math.isinf(value)):
@@ -524,7 +527,8 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
     results_df = pd.DataFrame(all_fairness_metrics)
 
     new_folder_path = os.path.join(*os.path.normpath(input_folder).split(os.sep)[-4:])
-    output_csv = f"results_metrics/fairness_results/{new_folder_path}.csv"
+    seed_suffix = f"_seed{random_state}" if random_state is not None else ""
+    output_csv = f"results_metrics/fairness_results/{new_folder_path}{seed_suffix}.csv"
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
     #print(f"Saving results to: {output_csv}")
     #results_df_sorted = results_df.sort_values(by="File")
@@ -534,7 +538,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
     #print(f"Stored in: {output_csv}")
 
     # Compute averages (and optionally stds)
-    average_fairness = {"folder_name": new_folder_path}
+    average_fairness = {"folder_name": new_folder_path, "rf_seed": random_state}
     for metric in metrics:
         count = count_metrics[metric]
         if count > 0:
@@ -548,7 +552,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
 
     return average_fairness
 
-def process_fairness(input_folder, test_fold, output_file="results_metrics/fairness_results/fairness_intermediate.csv", std=False, original=False, protected_attribute=None, fair=False, fitted_binners_by_file=None):
+def process_fairness(input_folder, test_fold, output_file="results_metrics/fairness_results/fairness_intermediate.csv", std=False, original=False, protected_attribute=None, fair=False, fitted_binners_by_file=None, random_state=57):
     """
     Process a single folder and write the calculated fairness statistics to a CSV file.
 
@@ -572,6 +576,7 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
         protected_attribute=protected_attribute,
         fair=fair,
         fitted_binners_by_file=fitted_binners_by_file,
+        random_state=random_state,
     )
 
     print(result)
@@ -593,8 +598,19 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
         # Read existing file
         existing_df = pd.read_csv(output_file)
 
-        # Reorder new_row columns to match existing
-        new_row = new_row[existing_df.columns]
+        # Align columns across runs, preserving any new seed-aware fields.
+        combined_columns = list(existing_df.columns)
+        for column_name in new_row.columns:
+            if column_name not in combined_columns:
+                combined_columns.append(column_name)
+        for column_name in combined_columns:
+            if column_name not in existing_df.columns:
+                existing_df[column_name] = pd.NA
+            if column_name not in new_row.columns:
+                new_row[column_name] = pd.NA
+
+        existing_df = existing_df[combined_columns]
+        new_row = new_row[combined_columns]
 
         # Append
         final_df = pd.concat([existing_df, new_row], ignore_index=True)
@@ -605,6 +621,32 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
     # Save to CSV
     final_df.to_csv(output_file, index=False)
     print(f"Fairness results saved to {output_file}")
+
+
+def process_fairness_for_seeds(
+    input_folder,
+    test_fold,
+    seeds,
+    output_file="results_metrics/fairness_results/fairness_intermediate.csv",
+    std=False,
+    original=False,
+    protected_attribute=None,
+    fair=False,
+    fitted_binners_by_file=None,
+):
+    """Run fairness evaluation for the same folder across multiple RF seeds."""
+    for seed in seeds:
+        process_fairness(
+            input_folder,
+            test_fold,
+            output_file=output_file,
+            std=std,
+            original=original,
+            protected_attribute=protected_attribute,
+            fair=fair,
+            fitted_binners_by_file=fitted_binners_by_file,
+            random_state=seed,
+        )
 
 
 # ------ SIMILARITY ------
