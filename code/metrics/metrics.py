@@ -530,7 +530,7 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
     seed_suffix = f"_seed{random_state}" if random_state is not None else ""
     output_csv = f"results_metrics/fairness_results/{new_folder_path}{seed_suffix}.csv"
     os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    #print(f"Saving results to: {output_csv}")
+    print(f"Saving detailed fairness results to: {os.path.abspath(output_csv)}")
     #results_df_sorted = results_df.sort_values(by="File")
     #df_sorted = ds_name_sorter(results_df, "File")
     df_sorted = results_df
@@ -588,6 +588,7 @@ def process_fairness(input_folder, test_fold, output_file="results_metrics/fairn
     # ------- write the average -------
     # Ensure directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    print(f"Saving fairness summary to: {os.path.abspath(output_file)}")
     new_row = pd.DataFrame([result])
 
     # Determine fieldnames from the result keys
