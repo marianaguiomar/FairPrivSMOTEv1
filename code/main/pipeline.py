@@ -20,7 +20,7 @@ from metrics.plots import plot_feature_across_files
 from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
 
-'''
+
 epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
 #epsilon_values = [0.5, 1.0, 5.0]
 k_values = [3,5]
@@ -34,7 +34,7 @@ k_values = [3]
 knn_values = [5]
 augmentation_values = [0.3]
 per_values = [2]
-
+'''
 
 
 def _print_group_counts(df, class_column, protected_attribute, fold_label):
@@ -195,58 +195,58 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 invalid = True
                 fitted_binners_by_file = {}
                 
-                #for ix, qi in enumerate(key_vars):
-                qi = key_vars[4]
-                fold_cache = build_fold_subgroup_cache(
-                    train_data,
-                    class_column,
-                    protected_attribute,
-                    qi,
-                    max(knn_values),
-                )
-                for epsilon in epsilon_values:
-                    for k in k_values:
-                        for knn in knn_values:
-                            for augmentation_rate in augmentation_values:
-                                ix = 4
-                                qi = key_vars[ix]
-                                '''
-                                print("Total dataset size at before smote_v3:", len(train_data))
-                                print(
-                                    train_data
-                                    .groupby([protected_attribute, class_column])
-                                    .size()
-                                    .reset_index(name="count")
-                                )
-                                '''
-                                #print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
-                                #train_data_before = train_data.copy()
-                                train_data_qi = train_data.copy(deep=True)
-                                '''
-                                output_path, fitted_binners = smote_v3(
-                                data=train_data_qi,
-                                dataset_name=dataset_name, 
-                                output_folder=output_fold_folder, 
-                                class_column=class_column, 
-                                protected_attribute=protected_attribute, 
-                                qi=qi, 
-                                qi_index=ix, 
-                                epsilon=epsilon, 
-                                k=k, 
-                                knn=knn,
-                                augmentation_rate=augmentation_rate,
-                                removal_strategy=removal_strategy,
-                                extra_rules=extra_rules,
-                                binning=binning,
-                                fold_cache=fold_cache,
-                                qi_only_visualization=qi_only_visualization
-                                )
-                                if output_path is not None and fitted_binners:
-                                    fitted_binners_by_file[os.path.basename(output_path)] = fitted_binners
-                                #print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
-                                #print((train_data_before != train_data).sum())
-                                '''
-                                invalid = False
+                for ix, qi in enumerate(key_vars):
+                    #qi = key_vars[4]
+                    fold_cache = build_fold_subgroup_cache(
+                        train_data,
+                        class_column,
+                        protected_attribute,
+                        qi,
+                        max(knn_values),
+                    )
+                    for epsilon in epsilon_values:
+                        for k in k_values:
+                            for knn in knn_values:
+                                for augmentation_rate in augmentation_values:
+                                    #ix = 4
+                                    #qi = key_vars[ix]
+                                    '''
+                                    print("Total dataset size at before smote_v3:", len(train_data))
+                                    print(
+                                        train_data
+                                        .groupby([protected_attribute, class_column])
+                                        .size()
+                                        .reset_index(name="count")
+                                    )
+                                    '''
+                                    #print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
+                                    #train_data_before = train_data.copy()
+                                    train_data_qi = train_data.copy(deep=True)
+                                    '''
+                                    output_path, fitted_binners = smote_v3(
+                                    data=train_data_qi,
+                                    dataset_name=dataset_name, 
+                                    output_folder=output_fold_folder, 
+                                    class_column=class_column, 
+                                    protected_attribute=protected_attribute, 
+                                    qi=qi, 
+                                    qi_index=ix, 
+                                    epsilon=epsilon, 
+                                    k=k, 
+                                    knn=knn,
+                                    augmentation_rate=augmentation_rate,
+                                    removal_strategy=removal_strategy,
+                                    extra_rules=extra_rules,
+                                    binning=binning,
+                                    fold_cache=fold_cache,
+                                    qi_only_visualization=qi_only_visualization
+                                    )
+                                    if output_path is not None and fitted_binners:
+                                        fitted_binners_by_file[os.path.basename(output_path)] = fitted_binners
+                                    #print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
+                                    #print((train_data_before != train_data).sum())
+                                    '''
+                                    invalid = False
                 if not invalid:
                     fairness_output_file = f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv"
                     rf_seeds = fairness_rf_seeds if fairness_rf_seeds is not None else [57]
@@ -291,6 +291,9 @@ def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, p
 
     ######################## APPLY ORIGINAL SMOTE ################################
     for file_name in os.listdir(input_folder):
+        if file_name == "13.csv" or file_name == "student.csv":
+            print(f"{file_name} already processed with original private smote, skipping")
+            continue
         file_path = os.path.join(input_folder, file_name)
         data = pd.read_csv(file_path)
 
@@ -311,13 +314,14 @@ def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, p
             test_data = data.iloc[test_idx].reset_index(drop=True)
             output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
             os.makedirs(output_fold_folder, exist_ok=True)
-
+            '''
             for ix, qi in enumerate(key_vars):
                 for epsilon in epsilon_values:
                     for k in k_values:
                         for knn in knn_values:
                             for per in per_values:
                                 print("")
+                                
                                 apply_original_private_smote(
                                     data=train_data,
                                     dataset_name=dataset_name,
@@ -330,9 +334,9 @@ def run_original_privsmote(input_folder, epsilon_values, k_values, knn_values, p
                                     nqi=ix
                                 )
                                
-            
-            for protected_attribute in protected_attribute_list:
-                process_fairness(output_fold_folder, test_data, output_file="results_metrics/fairness_results/fairness_intermediate_original.csv", original=True, protected_attribute=protected_attribute)
+            '''
+            #for protected_attribute in protected_attribute_list:
+            #    process_fairness(output_fold_folder, test_data, output_file="results_metrics/fairness_results/fairness_intermediate_original.csv", original=True, protected_attribute=protected_attribute)
             process_linkability(output_fold_folder, train_data, test_data, output_file="results_metrics/linkability_results/linkability_intermediate_original.csv")
 
 def run_original_fairsmote(input_folder, final_folder_name):
@@ -496,20 +500,22 @@ def run_all_removal_strategies(input_folder):
 
 #input_folder_name = "compas"
 #final_folder_name = "tomek_class_only"
-input_folder_name = "56"
-final_folder_name = "56_debug"
+input_folder_name = "test_original"
+final_folder_name = "test_original"
 method_number = "3"
 
 removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None  # Options: "synthetic_only", "single_out_only", None
 binning = None  # Options: 'uniform', 'quantile', 'kmeans', None
 qi_only_visualization = True  # Set to True to enable QI-only visualization mode
-fairness_rf_seeds = [11, 23, 37, 101]
+#fairness_rf_seeds = [11, 23, 37, 101]
 
 ### MY SMOTE ###
 #run_all_binning_methods("fair")
 #run_all_removal_strategies("fair")
-method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization, fairness_rf_seeds)
+#method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization, fairness_rf_seeds)
+#method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
+
 
 ### ORIGINAL SMOTE ###
 #run_original_privsmote(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, per_values, final_folder_name)
@@ -564,10 +570,11 @@ method_number = "3"
 
 folder_path_fairness = f"results_metrics/fairness_results/outputs_{method_number}"  # Replace with your actual folder path
 folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_number}"  # Replace with your actual folder path
-features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
-features_linkability = ['value', 'boundary_adherence']
-#for feature_name in features_fairness:
-#    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
+#features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
+features_fairness = ['F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
+features_linkability = ['value']
+for feature_name in features_fairness:
+    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
 
 
 #for feature_name in features_linkability:

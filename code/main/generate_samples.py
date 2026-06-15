@@ -840,7 +840,7 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     majority_class = max(category_counts, key=category_counts.get)
     maximum_count = category_counts[majority_class]
     reduced_maximum_count = int(maximum_count * augmentation_rate)  
-    #print(f"Category counts: {category_counts}")
+    print(f"Category counts: {category_counts}")
 
     # --- Step 3: Get minority classes and how many samples to add ---
     minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
@@ -877,11 +877,12 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
                 df_minority[class_tuple][col] = df_minority[class_tuple][col].astype(str)
 
     # --- Step 5: Replace single-outs in majority class ---
+    
     if 'single_out' in df_majority.columns:
         
         df_majority_single_out = df_majority[df_majority['single_out'] == 1]
         df_majority_remaining = df_majority[df_majority['single_out'] != 1]
-        #print(f"number of majority class single_out: {len(df_majority_single_out)}")
+        print(f"number of majority class single_out: {len(df_majority_single_out)}")
         
         if len(df_majority_single_out) >= (knn+1):
             # Pass full majority class for KNN, but only replace the single-out indices
@@ -913,20 +914,20 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     cleaned_minority_data = []
 
     for class_tuple, df_subset in df_minority.items():
-        '''
+        
         print(f"\n--- MINORITY SUBGROUP {class_tuple} BEFORE AUGMENTATION ---")
         print("Total size:", len(df_subset))
         print("Single-outs:", len(df_subset[df_subset['single_out']==1]))
         print("Non-single-outs:", len(df_subset[df_subset['single_out']!=1]))
         print("Target to generate:", samples_to_increase[class_tuple] if majority else int(len(df_subset)*augmentation_rate))
-        '''
+        
         #print(f"class_tuple: {class_tuple}")
         df_single_out = df_subset[df_subset['single_out'] == 1]
         
         df_non_single_out = df_subset[df_subset['single_out'] != 1]
 
         # --- Step 6a: Replace single-outs if any ---
-        
+        '''
         if len(df_single_out)>= (knn+1):
             # Pass full subset for KNN, but only replace the single-out indices
             subgroup_neighbor_indices = _get_cached_neighbor_indices(
@@ -954,12 +955,12 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             cleaned_minority_data.append(df_subset)
         else:
             return None, fitted_binners
-        
+        '''
         '''
         print(f"After single-out replacement: {len(replaced)} synthetic rows replaced for {class_tuple}")
         '''
         
-        #cleaned_minority_data.append(df_subset)
+        cleaned_minority_data.append(df_subset)
 
 
         # --- Step 6b: Augment from full minority subset (before replacement) ---
@@ -1047,14 +1048,14 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     if 'synthetic' in final_df.columns:
         final_df = final_df.drop(columns=['synthetic'])
     
-    '''
+    
     print("\nFinal subclass sizes:")
     for class_tuple in df_minority:
         final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
                                 (final_df[protected_attribute] == class_tuple[1])])
         print(f"  - {class_tuple}: {final_count}")
     print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
-    '''
+    
     cleaned_final_df = final_df.applymap(unpack_value)
     cleaned_final_df = cleaned_final_df.applymap(standardize_binary)
 

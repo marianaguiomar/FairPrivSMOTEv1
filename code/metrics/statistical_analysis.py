@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import shapiro, f_oneway, kruskal
-from scipy.stats import mannwhitneyu, wilcoxon, friedmanchisquare
+from scipy.stats import wilcoxon, friedmanchisquare
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 from statsmodels.stats.multitest import multipletests
 from scikit_posthocs import posthoc_dunn
@@ -8,6 +8,12 @@ import pandas as pd
 import os
 import json
 import re
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DEFAULT_STRATEGY_ROOTS = {}
+DEFAULT_METRICS = []
+DEFAULT_STATS_DIR = os.path.join(REPO_ROOT, "results_metrics", "fairness_results", "outputs_4", "cluster", "_stats")
+DEFAULT_LINKABILITY_DATASETS = ["3", "13", "23", "33", "37", "56", "adult", "compas", "credit", "german", "law", "oulad", "student"]
 
 # Step 1: Load the data and associate each method with its file
 def load_and_process_data(file_paths):
@@ -281,111 +287,6 @@ def _json_safe(value):
     return value
 
 
-def compare_against_control(folder_paths, metrics, control_label="none_3", output_file=None):
-    """Compare each strategy against the control folder and report significance plus direction.
-
-    For metrics with a known ideal value, the report marks a strategy as better/worse
-    based on distance to that ideal. For DI, the ideal is 1.0.
-    """
-    all_dfs = []
-    for folder in folder_paths:
-        if not os.path.isdir(folder):
-            raise FileNotFoundError(f"Folder not found: {folder}")
-        df = merge_folder_csvs(folder, approach_label=_folder_label(folder))
-        if df.empty:
-            print(f"No CSVs or data in {folder}, skipping")
-            continue
-        all_dfs.append(df)
-
-    if not all_dfs:
-        raise ValueError("No data loaded from provided folders")
-
-    combined = pd.concat(all_dfs, ignore_index=True)
-    if control_label not in set(combined["Approach"]):
-        raise ValueError(f"Control label {control_label!r} not found in loaded data")
-
-    results = {}
-    control_df = combined[combined["Approach"] == control_label]
-
-    for metric in metrics:
-        if metric not in combined.columns:
-            print(f"Metric {metric} not found in combined data; skipping")
-            continue
-
-        metric_result = {
-            "control": control_label,
-            "ideal": _metric_ideal(metric),
-            "control_summary": _finite_summary(control_df[metric].dropna().values),
-            "comparisons": {},
-        }
-
-        control_values = control_df[metric].dropna().values
-        control_values = control_values[np.isfinite(control_values)]
-        ideal = _metric_ideal(metric)
-
-        # Preserve the order of folder_paths as provided by the caller
-        approaches_in_order = []
-        for fp in folder_paths:
-            lbl = _folder_label(fp)
-            if lbl != control_label and lbl not in approaches_in_order:
-                approaches_in_order.append(lbl)
-
-        for approach in approaches_in_order:
-            strategy_values = combined.loc[combined["Approach"] == approach, metric].dropna().values
-            strategy_values = strategy_values[np.isfinite(strategy_values)]
-            if len(strategy_values) == 0 or len(control_values) == 0:
-                continue
-
-            # Two-sided significance test for difference from control.
-            u_stat, p_value = mannwhitneyu(strategy_values, control_values, alternative="two-sided")
-
-            strategy_mean = float(np.mean(strategy_values)) if len(strategy_values) else None
-            strategy_median = float(np.median(strategy_values)) if len(strategy_values) else None
-            control_mean = float(np.mean(control_values)) if len(control_values) else None
-            control_median = float(np.median(control_values)) if len(control_values) else None
-
-            direction = "different"
-            better = None
-            worse = None
-
-            if ideal is not None:
-                strategy_distance = abs(strategy_median - ideal)
-                control_distance = abs(control_median - ideal)
-                if strategy_distance < control_distance:
-                    direction = "better"
-                    better = True
-                    worse = False
-                elif strategy_distance > control_distance:
-                    direction = "worse"
-                    better = False
-                    worse = True
-                else:
-                    direction = "same"
-                    better = False
-                    worse = False
-
-            metric_result["comparisons"][approach] = {
-                "u_stat": float(u_stat),
-                "p_value": float(p_value),
-                "strategy_mean": strategy_mean,
-                "strategy_median": strategy_median,
-                "control_mean": control_mean,
-                "control_median": control_median,
-                "direction_vs_control": direction,
-                "better_than_control": better,
-                "worse_than_control": worse,
-            }
-
-        results[metric] = metric_result
-
-    if output_file:
-        with open(output_file, 'w') as fh:
-            json.dump(_json_safe(results), fh, default=str, indent=2)
-        print(f"Saved comparison results to {output_file}")
-
-    return results
-
-
 def _common_dataset_names(strategy_roots):
     dataset_sets = []
     for root in strategy_roots.values():
@@ -493,81 +394,100 @@ def compare_against_control_friedman_paired(folder_paths, metrics, output_file=N
 
         # Get control fold values
         control_fold_values = np.array(fold_data[control_label])
-        control_valid = control_fold_values[np.isfinite(control_fold_values)]
         ideal = _metric_ideal(metric)
 
-        # Compare each binning method to baseline
-        non_control_approaches = [a for a in approaches if a != control_label]
-        
-        # Sort by preferred strategy order: quantile, uniform, kmeans
-        strategy_order = ["quantile", "uniform", "kmeans"]
-        def get_strategy_priority(approach_label):
-            # Extract strategy name (last part after underscore) since labels are "dataset_strategy"
-            strategy_name = approach_label.split("_")[-1] if "_" in approach_label else approach_label
+        # Run Friedman test across all approaches (paired by fold)
+        approach_arrays = [np.array(fold_data[a]) for a in approaches]
+        # Valid folds are those where every approach has a finite value
+        if len(approach_arrays) > 1:
+            valid_mask_all = np.ones(len(folds), dtype=bool)
+            for arr in approach_arrays:
+                valid_mask_all &= np.isfinite(arr)
+            n_valid_folds = int(np.sum(valid_mask_all))
+        else:
+            valid_mask_all = np.array([False] * len(folds))
+            n_valid_folds = 0
+
+        if n_valid_folds >= 2 and len(approaches) >= 2:
             try:
-                return strategy_order.index(strategy_name)
-            except ValueError:
-                return len(strategy_order)  # Unknown strategies go last
-        
-        non_control_approaches.sort(key=get_strategy_priority)
-        
-        pairwise_p_values = []
-        pairwise_results_raw = []
+                arrays_filtered = [arr[valid_mask_all] for arr in approach_arrays]
+                fried_stat, fried_p = friedmanchisquare(*arrays_filtered)
+                metric_result["friedman_stat"] = float(fried_stat)
+                metric_result["friedman_p"] = float(fried_p)
+            except Exception as e:
+                metric_result["friedman_error"] = str(e)
+                fried_p = None
+        else:
+            fried_p = None
 
-        for strategy in non_control_approaches:
-            strategy_fold_values = np.array(fold_data[strategy])
+        # If Friedman is significant, perform pairwise Wilcoxon (paired by fold) vs baseline with Holm correction.
+        # Otherwise, skip post-hoc.
+        if fried_p is not None and fried_p < 0.05:
+            # Compare each binning method to baseline
+            non_control_approaches = [a for a in approaches if a != control_label]
             
-            # Ensure both have same number of valid folds
-            valid_mask = np.isfinite(control_fold_values) & np.isfinite(strategy_fold_values)
-            if np.sum(valid_mask) < 2:
-                continue
+            # Sort by preferred strategy order: quantile, uniform, kmeans
+            strategy_order = ["quantile", "uniform", "kmeans"]
+            def get_strategy_priority(approach_label):
+                strategy_name = approach_label.split("_")[-1] if "_" in approach_label else approach_label
+                try:
+                    return strategy_order.index(strategy_name)
+                except ValueError:
+                    return len(strategy_order)
             
-            control_vals = control_fold_values[valid_mask]
-            strategy_vals = strategy_fold_values[valid_mask]
+            non_control_approaches.sort(key=get_strategy_priority)
+            
+            pairwise_p_values = []
+            pairwise_results_raw = []
 
-            # Wilcoxon signed-rank test (paired)
-            stat, p = wilcoxon(strategy_vals, control_vals, alternative='two-sided')
-            pairwise_p_values.append(p)
-            pairwise_results_raw.append((strategy, stat, p))
+            for strategy in non_control_approaches:
+                strategy_fold_values = np.array(fold_data[strategy])
+                # Ensure both have same number of valid folds for this pair
+                valid_mask = np.isfinite(control_fold_values) & np.isfinite(strategy_fold_values)
+                if np.sum(valid_mask) < 2:
+                    continue
+                control_vals = control_fold_values[valid_mask]
+                strategy_vals = strategy_fold_values[valid_mask]
+                stat, p = wilcoxon(strategy_vals, control_vals, alternative='two-sided')
+                pairwise_p_values.append(p)
+                pairwise_results_raw.append((strategy, stat, p))
 
-        # Apply Holm correction
-        if pairwise_p_values:
-            reject, p_corrected, _, _ = multipletests(pairwise_p_values, method='holm')
+            # Apply Holm correction
+            if pairwise_p_values:
+                reject, p_corrected, _, _ = multipletests(pairwise_p_values, method='holm')
 
-            for idx, (strategy, stat, p_raw) in enumerate(pairwise_results_raw):
-                p_corr = p_corrected[idx]
-                
-                # Get summary stats
-                all_values = combined[combined['Approach'] == strategy][metric].dropna().values
-                all_values = all_values[np.isfinite(all_values)]
-                strategy_summary = _finite_summary(all_values)
-                
-                # Classify direction based on median distance to ideal
-                strategy_median = strategy_summary["median"] if strategy_summary["median"] is not None else np.nan
-                control_median = metric_result["control_summary"]["median"] if metric_result["control_summary"]["median"] is not None else np.nan
-                
-                direction = "different"
-                if ideal is not None and not (np.isnan(strategy_median) or np.isnan(control_median)):
-                    strategy_distance = abs(strategy_median - ideal)
-                    control_distance = abs(control_median - ideal)
-                    if strategy_distance < control_distance:
-                        direction = "better"
-                    elif strategy_distance > control_distance:
-                        direction = "worse"
-                    else:
-                        direction = "same"
+                for idx, (strategy, stat, p_raw) in enumerate(pairwise_results_raw):
+                    p_corr = p_corrected[idx]
+                    all_values = combined[combined['Approach'] == strategy][metric].dropna().values
+                    all_values = all_values[np.isfinite(all_values)]
+                    strategy_summary = _finite_summary(all_values)
+                    strategy_median = strategy_summary["median"] if strategy_summary["median"] is not None else np.nan
+                    control_median = metric_result["control_summary"]["median"] if metric_result["control_summary"]["median"] is not None else np.nan
 
-                metric_result["comparisons"][strategy] = {
-                    "wilcoxon_statistic": float(stat),
-                    "p_value_raw": float(p_raw),
-                    "p_value_holm_corrected": float(p_corr),
-                    "significant_after_holm": bool(p_corr < 0.05),
-                    "strategy_mean": strategy_summary["mean"],
-                    "strategy_median": strategy_summary["median"],
-                    "control_mean": metric_result["control_summary"]["mean"],
-                    "control_median": metric_result["control_summary"]["median"],
-                    "direction": direction,
-                }
+                    direction = "different"
+                    if ideal is not None and not (np.isnan(strategy_median) or np.isnan(control_median)):
+                        strategy_distance = abs(strategy_median - ideal)
+                        control_distance = abs(control_median - ideal)
+                        if strategy_distance < control_distance:
+                            direction = "better"
+                        elif strategy_distance > control_distance:
+                            direction = "worse"
+                        else:
+                            direction = "same"
+
+                    metric_result["comparisons"][strategy] = {
+                        "wilcoxon_statistic": float(stat),
+                        "p_value_raw": float(p_raw),
+                        "p_value_holm_corrected": float(p_corr),
+                        "significant_after_holm": bool(p_corr < 0.05),
+                        "strategy_mean": strategy_summary["mean"],
+                        "strategy_median": strategy_summary["median"],
+                        "control_mean": metric_result["control_summary"]["mean"],
+                        "control_median": metric_result["control_summary"]["median"],
+                        "direction": direction,
+                    }
+        else:
+            metric_result["posthoc"] = "Friedman test not significant or insufficient data; no post-hoc Wilcoxon performed."
 
         results[metric] = metric_result
 
@@ -577,53 +497,6 @@ def compare_against_control_friedman_paired(folder_paths, metrics, output_file=N
         print(f"  Saved Friedman comparison results to {output_file}")
 
     return results
-
-
-def run_default_comparison():
-    """Run one comparison JSON per dataset folder across the four strategy roots."""
-    # Use the control ('none') root as the canonical list of datasets so
-    # we can compare any strategies that exist for each dataset even when
-    # other strategies are missing.
-    control_root = DEFAULT_STRATEGY_ROOTS.get('none') or next(iter(DEFAULT_STRATEGY_ROOTS.values()))
-    if not os.path.isdir(control_root):
-        raise FileNotFoundError(f"Control strategy root not found: {control_root}")
-    dataset_names = sorted([name for name in os.listdir(control_root) if os.path.isdir(os.path.join(control_root, name))])
-    if not dataset_names:
-        raise ValueError("No dataset folders found in control/root directory")
-
-    os.makedirs(DEFAULT_STATS_DIR, exist_ok=True)
-
-    batch_results = {}
-    for dataset_name in dataset_names:
-        # Build folder paths from the keys in DEFAULT_STRATEGY_ROOTS but include
-        # only those strategies where the dataset folder exists.
-        strategy_keys = list(DEFAULT_STRATEGY_ROOTS.keys())
-        if 'none' in strategy_keys:
-            strategy_keys = ['none'] + [k for k in strategy_keys if k != 'none']
-
-        existing_keys = [k for k in strategy_keys if os.path.isdir(os.path.join(DEFAULT_STRATEGY_ROOTS[k], dataset_name))]
-        if not existing_keys or (len(existing_keys) == 1 and existing_keys[0] == 'none'):
-            print(f"Skipping {dataset_name}: no strategy folders found besides control")
-            continue
-
-        folder_paths = [os.path.join(DEFAULT_STRATEGY_ROOTS[k], dataset_name) for k in existing_keys]
-        output_file = os.path.join(DEFAULT_STATS_DIR, f"{dataset_name}_comparison.json")
-        control_label = _folder_label(os.path.join(DEFAULT_STRATEGY_ROOTS['none'], dataset_name)) if 'none' in DEFAULT_STRATEGY_ROOTS else _folder_label(folder_paths[0])
-
-        print(f"\n=== Comparing dataset folder: {dataset_name} ===")
-        batch_results[dataset_name] = compare_against_control(
-            folder_paths,
-            DEFAULT_METRICS,
-            control_label=control_label,
-            output_file=output_file,
-        )
-
-    index_file = os.path.join(DEFAULT_STATS_DIR, "__index.json")
-    with open(index_file, "w") as fh:
-        json.dump(_json_safe(batch_results), fh, default=str, indent=2)
-    print(f"Saved index of all comparisons to {index_file}")
-
-    return batch_results
 
 
 def run_default_comparison_friedman():
@@ -682,7 +555,8 @@ def run_all_comparison_friedman():
     if 'none' in strategy_keys:
         strategy_keys = ['none'] + [k for k in strategy_keys if k != 'none']
 
-    # Load and combine all CSVs from all datasets for each strategy
+    # Load and combine all CSVs from all datasets for each strategy.
+    # Pairing blocks are dataset+fold, so folds from different datasets are never mixed.
     all_dfs_by_strategy = {}
     for strategy_key in strategy_keys:
         strategy_root = DEFAULT_STRATEGY_ROOTS[strategy_key]
@@ -692,7 +566,8 @@ def run_all_comparison_friedman():
             if os.path.isdir(dataset_folder):
                 df = merge_folder_csvs_with_fold_id(dataset_folder, approach_label=strategy_key)
                 if not df.empty:
-                    df['dataset'] = dataset_name  # Tag with dataset name for reference
+                    df['dataset'] = dataset_name
+                    df['block_id'] = df['dataset'].astype(str) + '__fold' + df['fold_id'].astype(int).astype(str)
                     dfs.append(df)
         if dfs:
             all_dfs_by_strategy[strategy_key] = pd.concat(dfs, ignore_index=True)
@@ -720,14 +595,7 @@ def run_all_comparison_friedman():
             "comparisons": {},
         }
 
-        # Get unique folds and strategies
-        folds = sorted(combined['fold_id'].dropna().unique())
         approaches = sorted(combined['Approach'].unique())
-
-        if len(folds) < 2:
-            print(f"  Metric {metric}: insufficient folds for paired test (need >=2, got {len(folds)})")
-            results[metric] = metric_result
-            continue
 
         # Find baseline (approach is just strategy_key now, check for 'none')
         control_label = None
@@ -743,102 +611,113 @@ def run_all_comparison_friedman():
 
         metric_result["control"] = control_label
 
-        # Create fold-level data for all strategies
-        fold_data = {}
-        for approach in approaches:
-            approach_data = combined[combined['Approach'] == approach]
-            values_by_fold = []
-            for fold in folds:
-                fold_values = approach_data[
-                    (approach_data['fold_id'] == fold)
-                ][metric].dropna().values
-                fold_values = fold_values[np.isfinite(fold_values)]
-                if len(fold_values) > 0:
-                    values_by_fold.append(float(np.mean(fold_values)))
-                else:
-                    values_by_fold.append(np.nan)
-            fold_data[approach] = values_by_fold
+        # Create block-level means for each strategy, then align on common dataset+fold blocks.
+        block_means = combined.groupby(["Approach", "block_id"], dropna=True)[metric].mean().reset_index()
+        common_blocks = sorted(
+            set.intersection(*[
+                set(block_means[block_means["Approach"] == approach]["block_id"])
+                for approach in approaches
+            ])
+        )
 
-            # Summary for this strategy (across all rows)
-            all_values = approach_data[metric].dropna().values
-            all_values = all_values[np.isfinite(all_values)]
-            if approach == control_label:
-                metric_result["control_summary"] = _finite_summary(all_values)
+        if len(common_blocks) < 2:
+            print(f"  Metric {metric}: insufficient matched dataset+fold blocks (need >=2, got {len(common_blocks)})")
+            results[metric] = metric_result
+            continue
 
-        # Get control fold values
-        control_fold_values = np.array(fold_data[control_label])
+        metric_result["control_summary"] = _finite_summary(
+            combined[combined["Approach"] == control_label][metric].dropna().values
+        )
         ideal = _metric_ideal(metric)
 
-        # Compare each strategy to baseline
-        non_control_approaches = [a for a in approaches if a != control_label]
-        
-        # Sort by strategy order (quantile, uniform, kmeans, or other strategies)
-        strategy_order = ["quantile", "uniform", "kmeans", "class", "majority"]
-        def get_strategy_priority(strategy_name):
-            try:
-                return strategy_order.index(strategy_name)
-            except ValueError:
-                return len(strategy_order)
-        
-        non_control_approaches.sort(key=get_strategy_priority)
-        
-        pairwise_p_values = []
-        pairwise_results_raw = []
+        arrays_by_approach = {}
+        for approach in approaches:
+            series = (
+                block_means[block_means["Approach"] == approach]
+                .set_index("block_id")[metric]
+                .loc[common_blocks]
+                .to_numpy(dtype=float)
+            )
+            arrays_by_approach[approach] = series
 
-        for strategy in non_control_approaches:
-            strategy_fold_values = np.array(fold_data[strategy])
-            
-            # Ensure both have same number of valid folds
-            valid_mask = np.isfinite(control_fold_values) & np.isfinite(strategy_fold_values)
-            if np.sum(valid_mask) < 2:
-                continue
-            
-            control_vals = control_fold_values[valid_mask]
-            strategy_vals = strategy_fold_values[valid_mask]
+        valid_mask_all = np.ones(len(common_blocks), dtype=bool)
+        for approach in approaches:
+            valid_mask_all &= np.isfinite(arrays_by_approach[approach])
 
-            # Wilcoxon signed-rank test (paired)
-            stat, p = wilcoxon(strategy_vals, control_vals, alternative='two-sided')
-            pairwise_p_values.append(p)
-            pairwise_results_raw.append((strategy, stat, p))
+        if np.sum(valid_mask_all) < 2:
+            print(f"  Metric {metric}: insufficient finite matched blocks after alignment")
+            results[metric] = metric_result
+            continue
 
-        # Apply Holm correction
-        if pairwise_p_values:
-            reject, p_corrected, _, _ = multipletests(pairwise_p_values, method='holm')
+        arrays_filtered = [arrays_by_approach[approach][valid_mask_all] for approach in approaches]
+        try:
+            fried_stat, fried_p = friedmanchisquare(*arrays_filtered)
+            metric_result["friedman_stat"] = float(fried_stat)
+            metric_result["friedman_p"] = float(fried_p)
+        except Exception as e:
+            metric_result["friedman_error"] = str(e)
+            results[metric] = metric_result
+            continue
 
-            for idx, (strategy, stat, p_raw) in enumerate(pairwise_results_raw):
-                p_corr = p_corrected[idx]
-                
-                # Get summary stats
-                all_values = combined[combined['Approach'] == strategy][metric].dropna().values
-                all_values = all_values[np.isfinite(all_values)]
-                strategy_summary = _finite_summary(all_values)
-                
-                # Classify direction based on median distance to ideal
-                strategy_median = strategy_summary["median"] if strategy_summary["median"] is not None else np.nan
-                control_median = metric_result["control_summary"]["median"] if metric_result["control_summary"]["median"] is not None else np.nan
-                
-                direction = "different"
-                if ideal is not None and not (np.isnan(strategy_median) or np.isnan(control_median)):
-                    strategy_distance = abs(strategy_median - ideal)
-                    control_distance = abs(control_median - ideal)
-                    if strategy_distance < control_distance:
-                        direction = "better"
-                    elif strategy_distance > control_distance:
-                        direction = "worse"
-                    else:
-                        direction = "same"
+        if fried_p is not None and fried_p < 0.05:
+            non_control_approaches = [a for a in approaches if a != control_label]
+            strategy_order = ["quantile", "uniform", "kmeans", "class", "majority"]
 
-                metric_result["comparisons"][strategy] = {
-                    "wilcoxon_statistic": float(stat),
-                    "p_value_raw": float(p_raw),
-                    "p_value_holm_corrected": float(p_corr),
-                    "significant_after_holm": bool(p_corr < 0.05),
-                    "strategy_mean": strategy_summary["mean"],
-                    "strategy_median": strategy_summary["median"],
-                    "control_mean": metric_result["control_summary"]["mean"],
-                    "control_median": metric_result["control_summary"]["median"],
-                    "direction": direction,
-                }
+            def get_strategy_priority(strategy_name):
+                try:
+                    return strategy_order.index(strategy_name)
+                except ValueError:
+                    return len(strategy_order)
+
+            non_control_approaches.sort(key=get_strategy_priority)
+
+            pairwise_p_values = []
+            pairwise_results_raw = []
+            control_vals = arrays_by_approach[control_label][valid_mask_all]
+
+            for strategy in non_control_approaches:
+                strategy_vals = arrays_by_approach[strategy][valid_mask_all]
+                valid_mask = np.isfinite(control_vals) & np.isfinite(strategy_vals)
+                if np.sum(valid_mask) < 2:
+                    continue
+                stat, p = wilcoxon(strategy_vals[valid_mask], control_vals[valid_mask], alternative='two-sided')
+                pairwise_p_values.append(p)
+                pairwise_results_raw.append((strategy, stat, p))
+
+            if pairwise_p_values:
+                _, p_corrected, _, _ = multipletests(pairwise_p_values, method='holm')
+                for idx, (strategy, stat, p_raw) in enumerate(pairwise_results_raw):
+                    p_corr = p_corrected[idx]
+                    strategy_values = combined[combined['Approach'] == strategy][metric].dropna().values
+                    strategy_values = strategy_values[np.isfinite(strategy_values)]
+                    strategy_summary = _finite_summary(strategy_values)
+                    strategy_median = strategy_summary["median"] if strategy_summary["median"] is not None else np.nan
+                    control_median = metric_result["control_summary"]["median"] if metric_result["control_summary"]["median"] is not None else np.nan
+
+                    direction = "different"
+                    if ideal is not None and not (np.isnan(strategy_median) or np.isnan(control_median)):
+                        strategy_distance = abs(strategy_median - ideal)
+                        control_distance = abs(control_median - ideal)
+                        if strategy_distance < control_distance:
+                            direction = "better"
+                        elif strategy_distance > control_distance:
+                            direction = "worse"
+                        else:
+                            direction = "same"
+
+                    metric_result["comparisons"][strategy] = {
+                        "wilcoxon_statistic": float(stat),
+                        "p_value_raw": float(p_raw),
+                        "p_value_holm_corrected": float(p_corr),
+                        "significant_after_holm": bool(p_corr < 0.05),
+                        "strategy_mean": strategy_summary["mean"],
+                        "strategy_median": strategy_summary["median"],
+                        "control_mean": metric_result["control_summary"]["mean"],
+                        "control_median": metric_result["control_summary"]["median"],
+                        "direction": direction,
+                    }
+        else:
+            metric_result["posthoc"] = "Friedman test not significant or insufficient data; no post-hoc Wilcoxon performed."
 
         results[metric] = metric_result
 
@@ -850,10 +729,294 @@ def run_all_comparison_friedman():
     return results
 
 
+def compare_linkability_roots(none_root: str,
+                              fair_root: str,
+                              original_root: str,
+                              output_file: str = None,
+                              dataset_names=None):
+    """Compare average linkability across three strategy roots.
+
+    The unit of analysis is the per-fold average linkability computed from each
+    fold CSV. For the pooled test, the pairing block is dataset+fold, not fold id
+    alone, so folds from different datasets are never mixed together.
+    """
+    return _compare_three_strategy_roots_single_metric(
+        none_root=none_root,
+        fair_root=fair_root,
+        original_root=original_root,
+        metric_column='linkability_value',
+        ideal=0.0,
+        output_file=output_file,
+        dataset_names=dataset_names,
+        comparison_label='linkability',
+        default_dataset_names=DEFAULT_LINKABILITY_DATASETS,
+        allow_value_fallback=True,
+    )
+
+
+def compare_fairness_roots(none_root: str,
+                           fair_root: str,
+                           original_root: str,
+                           output_file: str = None,
+                           dataset_names=None):
+    """Compare fairness and utility metrics across three strategy roots.
+
+    The default metrics are AOD_protected, EOD_protected, SPD, DI, and F1 Score.
+    """
+    metric_names = ["AOD_protected", "EOD_protected", "SPD", "DI", "F1 Score"]
+    results = {}
+
+    for metric_name in metric_names:
+        results[metric_name] = _compare_three_strategy_roots_single_metric(
+            none_root=none_root,
+            fair_root=fair_root,
+            original_root=original_root,
+            metric_column=metric_name,
+            ideal=_metric_ideal(metric_name),
+            output_file=None,
+            dataset_names=dataset_names,
+            comparison_label=metric_name,
+            default_dataset_names=None,
+            allow_value_fallback=False,
+        )
+
+    if output_file:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w') as fh:
+            json.dump(_json_safe(results), fh, default=str, indent=2)
+        print(f"Saved fairness comparison to {output_file}")
+
+    return results
+
+
+def _compare_three_strategy_roots_single_metric(
+    none_root: str,
+    fair_root: str,
+    original_root: str,
+    metric_column: str,
+    ideal,
+    output_file: str = None,
+    dataset_names=None,
+    comparison_label: str = None,
+    default_dataset_names=None,
+    allow_value_fallback: bool = False,
+):
+    """Compare a single metric across the three strategy roots using paired tests."""
+    roots = {
+        'none': none_root,
+        'fair': fair_root,
+        'original': original_root,
+    }
+
+    for _, root in roots.items():
+        if not os.path.isdir(root):
+            raise FileNotFoundError(f"Strategy root not found: {root}")
+
+    dataset_sets = []
+    for root in roots.values():
+        dataset_sets.append({
+            name for name in os.listdir(root)
+            if os.path.isdir(os.path.join(root, name))
+        })
+
+    if dataset_names is None:
+        if default_dataset_names is None:
+            dataset_names = sorted(set.intersection(*dataset_sets)) if dataset_sets else []
+        else:
+            dataset_names = default_dataset_names
+
+    dataset_names = [name for name in dataset_names if all(name in datasets for datasets in dataset_sets)]
+
+    def _load_dataset_fold_means(dataset_name: str):
+        """Return a dict of approach -> Series indexed by fold id, plus raw pooled rows."""
+        approach_series = {}
+        pooled_rows = []
+
+        for approach, root in roots.items():
+            folder = os.path.join(root, dataset_name)
+            if not os.path.isdir(folder):
+                return None, None
+
+            df = merge_folder_csvs_with_fold_id(folder, approach_label=approach)
+            if df.empty or 'fold_id' not in df.columns:
+                return None, None
+
+            if metric_column not in df.columns:
+                if allow_value_fallback and 'value' in df.columns:
+                    df = df.copy()
+                    df[metric_column] = df['value']
+                else:
+                    return None, None
+
+            df = df.copy()
+            df['dataset'] = dataset_name
+            df['block_id'] = df['dataset'].astype(str) + '__fold' + df['fold_id'].astype(int).astype(str)
+            pooled_rows.append(df[['Approach', 'dataset', 'fold_id', 'block_id', metric_column]])
+
+            series = df.groupby('fold_id', dropna=True)[metric_column].mean().dropna()
+            if series.empty:
+                return None, None
+            approach_series[approach] = series
+
+        return approach_series, pd.concat(pooled_rows, ignore_index=True)
+
+    def _friedman_and_posthoc(arrays_by_approach, approach_order, metric_label):
+        valid_mask = np.ones(len(arrays_by_approach[approach_order[0]]), dtype=bool)
+        for approach in approach_order:
+            valid_mask &= np.isfinite(arrays_by_approach[approach])
+
+        if np.sum(valid_mask) < 2:
+            return {"error": "insufficient matched folds after alignment"}
+
+        arrays_filtered = [arrays_by_approach[approach][valid_mask] for approach in approach_order]
+        fried_stat, fried_p = friedmanchisquare(*arrays_filtered)
+        result = {
+            'friedman_stat': float(fried_stat),
+            'friedman_p': float(fried_p),
+            'comparisons': {},
+        }
+        baseline = arrays_filtered[0]
+        result['control_summary'] = _finite_summary(baseline)
+
+        if fried_p >= 0.05:
+            result['posthoc'] = f'Friedman not significant for {metric_label}; no post-hoc'
+            return result
+
+        pairwise_p = []
+        raw = []
+        for idx, approach in enumerate(approach_order[1:], start=1):
+            arr = arrays_filtered[idx]
+            mask = np.isfinite(baseline) & np.isfinite(arr)
+            if np.sum(mask) < 2:
+                continue
+            stat, p = wilcoxon(arr[mask], baseline[mask], alternative='two-sided')
+            pairwise_p.append(p)
+            raw.append((idx, approach, float(stat), float(p)))
+
+        if pairwise_p:
+            _, p_corr, _, _ = multipletests(pairwise_p, method='holm')
+            for i, (idx, approach, stat, p_raw) in enumerate(raw):
+                arr_full = arrays_filtered[idx]
+                mask = np.isfinite(baseline) & np.isfinite(arr_full)
+                baseline_masked = baseline[mask]
+                arr_masked = arr_full[mask]
+
+                strategy_summary = _finite_summary(arr_masked)
+                control_summary = _finite_summary(baseline_masked)
+
+                try:
+                    strategy_mean = strategy_summary['mean']
+                    control_mean = control_summary['mean']
+                    if ideal is None or strategy_mean is None or control_mean is None:
+                        direction = 'insufficient_data'
+                    else:
+                        strategy_dist = abs(strategy_mean - ideal)
+                        control_dist = abs(control_mean - ideal)
+                        if strategy_dist < control_dist:
+                            direction = 'better'
+                        elif strategy_dist > control_dist:
+                            direction = 'worse'
+                        else:
+                            direction = 'same'
+                except Exception:
+                    direction = 'insufficient_data'
+
+                result['comparisons'][approach] = {
+                    'wilcoxon_stat': stat,
+                    'p_raw': p_raw,
+                    'p_holm': float(p_corr[i]),
+                    'significant': bool(p_corr[i] < 0.05),
+                    'strategy_mean': strategy_summary['mean'],
+                    'strategy_median': strategy_summary['median'],
+                    'control_mean': control_summary['mean'],
+                    'control_median': control_summary['median'],
+                    'direction': direction,
+                }
+
+        return result
+
+    results = {}
+    pooled_rows_all = []
+
+    if not dataset_names:
+        results['error'] = 'No common dataset folders found across the three roots.'
+
+    for dataset_name in dataset_names:
+        approach_series, pooled_rows = _load_dataset_fold_means(dataset_name)
+        if approach_series is None:
+            continue
+
+        pooled_rows_all.append(pooled_rows)
+
+        common_folds = sorted(set.intersection(*(set(series.index) for series in approach_series.values())))
+        if len(common_folds) < 2:
+            results[dataset_name] = {"error": "insufficient matched folds for paired test"}
+            continue
+
+        arrays_by_approach = {
+            approach: approach_series[approach].loc[common_folds].to_numpy(dtype=float)
+            for approach in ['none', 'fair', 'original']
+        }
+        results[dataset_name] = _friedman_and_posthoc(arrays_by_approach, ['none', 'fair', 'original'], dataset_name)
+
+    pooled_result = {}
+    if pooled_rows_all:
+        combined = pd.concat(pooled_rows_all, ignore_index=True)
+        grouped = combined.groupby(['Approach', 'block_id'], dropna=True)[metric_column].mean().reset_index()
+
+        common_blocks = sorted(
+            set.intersection(
+                *[set(grouped[grouped['Approach'] == approach]['block_id']) for approach in ['none', 'fair', 'original']]
+            )
+        )
+
+        if len(common_blocks) >= 2:
+            arrays_by_approach = {}
+            for approach in ['none', 'fair', 'original']:
+                series = (
+                    grouped[grouped['Approach'] == approach]
+                    .set_index('block_id')[metric_column]
+                    .loc[common_blocks]
+                    .to_numpy(dtype=float)
+                )
+                arrays_by_approach[approach] = series
+            pooled_result = _friedman_and_posthoc(arrays_by_approach, ['none', 'fair', 'original'], 'all_pooled')
+        else:
+            pooled_result = {'error': 'insufficient matched dataset+fold blocks in pooled data'}
+    else:
+        pooled_result = {'error': 'No comparable dataset rows were loaded from the three roots.'}
+
+    results['all_pooled'] = pooled_result
+
+    if output_file:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, 'w') as fh:
+            json.dump(_json_safe(results), fh, default=str, indent=2)
+        print(f"Saved {comparison_label or metric_column} comparison to {output_file}")
+
+    return results
+
+
 if __name__ == '__main__':
     import sys
 
-    dataset = "all_binning"  # Change this to the dataset folder you want to analyze (must exist in all strategy roots)
+    compare_linkability_roots(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "results_metrics", "linkability_results", "_cluster", "none")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "old", "experiment", "first", "linkability", "test_fair")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "old", "experiment", "first", "linkability", "test_original")),
+        output_file=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "results_metrics", "linkability_results", "_cluster", "linkability_comparison.json")),
+    )
+
+    compare_fairness_roots(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "results_metrics", "fairness_results", "outputs_4", "cluster", "none")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "old", "experiment", "first", "fairness", "test_fair")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "old", "experiment", "first", "fairness", "test_original")),
+        output_file=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "results_metrics", "fairness_results", "outputs_4", "cluster", "fairness_comparison.json")),
+    )
+    
+    '''
+
+    dataset = "all_tomek"  # Change this to the dataset folder you want to analyze (must exist in all strategy roots)
 
     # Edit these values directly when you want to compare a different set of folders.
     DEFAULT_STRATEGY_ROOTS_BINNING = {
@@ -867,6 +1030,7 @@ if __name__ == '__main__':
         "none": f"results_metrics/fairness_results/outputs_4/cluster/{dataset}/none",
         "class": f"results_metrics/fairness_results/outputs_4/cluster/{dataset}/class_only",
         "majority": f"results_metrics/fairness_results/outputs_4/cluster/{dataset}/majority_only",
+        "subgroup": f"results_metrics/fairness_results/outputs_4/cluster/{dataset}/subgroup_only",
     }
 
     if dataset == "all_tomek":
@@ -889,23 +1053,18 @@ if __name__ == '__main__':
     DEFAULT_STATS_DIR = f"results_metrics/fairness_results/outputs_4/cluster/{dataset}/_stats"
 
     
-    if len(sys.argv) > 1 and sys.argv[1].lower() == 'mann-whitney':
-        print("\n" + "="*70)
-        print("Running Mann-Whitney U statistical tests (unpaired)")
-        print("="*70)
-        results = run_default_comparison()
-    else:
-        print("\n" + "="*70)
-        print("Running Friedman + Wilcoxon (paired) statistical tests per dataset")
-        print("Test pipeline: Friedman test → Wilcoxon post-hoc → Holm correction")
-        print("="*70)
-        results = run_default_comparison_friedman()
-        
-        print("\n" + "="*70)
-        print("Running Friedman + Wilcoxon (paired) on all datasets pooled together")
-        print("="*70)
-        results_all = run_all_comparison_friedman()
+    print("\n" + "="*70)
+    print("Running Friedman + Wilcoxon (paired) statistical tests per dataset")
+    print("Test pipeline: Friedman test → Wilcoxon post-hoc → Holm correction")
+    print("="*70)
+    results = run_default_comparison_friedman()
+    
+    print("\n" + "="*70)
+    print("Running Friedman + Wilcoxon (paired) on all datasets pooled together")
+    print("="*70)
+    results_all = run_all_comparison_friedman()
     
     print("\n" + "="*70)
     print("Comparison complete!")
     print("="*70)
+    '''

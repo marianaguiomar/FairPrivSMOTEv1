@@ -211,7 +211,6 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
     y_test = test_fold[class_column]
 
     dataset_name = os.path.basename(file_path).split("_eps")[0]
-    continuous_columns = get_continuous_columns(dataset_name, "continuous_attributes.csv")
 
     if fitted_binners is None:
         binning_metadata_path = file_path.replace(".csv", ".binning.pkl")
@@ -220,6 +219,7 @@ def compute_fairness_metrics(file_path, test_fold, protected_attribute, class_co
                 fitted_binners = pickle.load(binning_file)
 
     if fitted_binners:
+        continuous_columns = get_continuous_columns(dataset_name, "continuous_attributes.csv")
         X_test = X_test.copy()
         for column_name, binner in fitted_binners.items():
             if column_name in X_test.columns and column_name in continuous_columns:

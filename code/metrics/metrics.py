@@ -36,10 +36,8 @@ def _parse_ci_value(ci):
 
 # ------ LINKABILITY ------
 def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = False, fair=False):
-
     file_list = [file for _, _, files in os.walk(transf_folder_path) for file in files]  
     total_files = len(file_list) 
-
     results = []
             
     # Loop through each file and each value of nqi (0, 1, 2, 3,4)

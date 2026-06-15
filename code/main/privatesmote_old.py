@@ -554,6 +554,7 @@ def apply_private_smote_new(data, epsilon, n_samples, replace, knn, k, key_vars,
     return new_samples
 
 def apply_original_private_smote(data, dataset_name, knn, per, epsilon, k, key_vars, output_folder, nqi):
+    print(f"Applying PrivateSMOTE on dataset: {dataset_name} with parameters: knn={knn}, per={per}, epsilon={epsilon}, k={k}, key_vars={key_vars}, nqi={nqi}")
     # encode string with numbers to numeric and remove trailing zeros
 
     #print(f"Output folder: {output_folder}")

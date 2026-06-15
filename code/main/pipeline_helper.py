@@ -465,7 +465,7 @@ def ds_name_sorter(df, file_column='file'):
 
 if __name__ == "__main__":
     # Example usage:
-    dataset_name = "law"
+    dataset_name = "56"
     print_class_combinations(f"{dataset_name}.csv")
     dataset = "datasets/outputs/outputs_4/old/test_with_replacement/56/fold1/56_eps0.1_k3_knn3_aug0.3_fairprivateSMOTE_V38_QI0.csv"
     #print_class_combinations(dataset=dataset)

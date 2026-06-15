@@ -556,8 +556,123 @@ def print_average_di(input_folder):
     avg_di = combined_df["DI"].mean()
     
     print(f"\nAverage DI of folder {input_folder}:")
-    print(f"Average DI: {avg_di:.4f}")
+    print(f"Average DI: {avg_di:.3f}")
     print(f"Number of rows: {len(combined_df)}")
+
+
+def print_average_fairness_metrics(input_folder):
+    """
+    Calculate and print average DI, AOD, EOD, and SPD across all files in the input folder.
+
+    Parameters:
+        input_folder (str): Folder containing fold CSVs
+    """
+
+    all_data = []
+
+    for file_name in os.listdir(input_folder):
+        if file_name.endswith(".csv"):
+            df = pd.read_csv(os.path.join(input_folder, file_name))
+            all_data.append(df)
+
+    if not all_data:
+        print(f"No CSV files found in {input_folder}.")
+        return
+
+    combined_df = pd.concat(all_data, ignore_index=True)
+    combined_df = combined_df.replace([np.inf, -np.inf], np.nan)
+
+    metric_columns = {
+        "DI": "DI",
+        "AOD": "AOD_protected",
+        "EOD": "EOD_protected",
+        "SPD": "SPD",
+    }
+
+    print(f"\nAverage fairness metrics of folder {input_folder}:")
+
+    for label, column_name in metric_columns.items():
+        if column_name not in combined_df.columns:
+            print(f"{label}: column '{column_name}' not found")
+            continue
+
+        combined_df[column_name] = pd.to_numeric(combined_df[column_name], errors="coerce")
+        avg_value = combined_df[column_name].mean()
+        print(f"{label}: {avg_value:.3f}")
+
+    print(f"Number of rows: {len(combined_df)}")
+
+
+def print_average_fairness_metrics_across_datasets(input_folder):
+    """
+    Calculate and print the average of each dataset's fairness metrics.
+
+    This treats each subfolder in input_folder as one dataset. Each dataset
+    folder may contain multiple CSV files, which are combined before computing
+    that dataset's metric averages. The final result gives every dataset equal
+    weight, instead of averaging all rows together.
+
+    Parameters:
+        input_folder (str): Folder containing one subfolder per dataset
+    """
+
+    metric_columns = {
+        "DI": "DI",
+        "AOD": "AOD_protected",
+        "EOD": "EOD_protected",
+        "SPD": "SPD",
+    }
+
+    dataset_rows = []
+
+    for entry_name in sorted(os.listdir(input_folder)):
+        dataset_path = os.path.join(input_folder, entry_name)
+        if not os.path.isdir(dataset_path):
+            continue
+
+        csv_paths = [
+            os.path.join(dataset_path, file_name)
+            for file_name in sorted(os.listdir(dataset_path))
+            if file_name.endswith(".csv")
+        ]
+
+        if not csv_paths:
+            continue
+
+        dataset_name = entry_name
+        dataset_frames = [
+            pd.read_csv(file_path).replace([np.inf, -np.inf], np.nan)
+            for file_path in csv_paths
+        ]
+        df = pd.concat(dataset_frames, ignore_index=True)
+
+        row = {"dataset": dataset_name}
+        has_any_metric = False
+
+        for label, column_name in metric_columns.items():
+            if column_name not in df.columns:
+                row[label] = np.nan
+                continue
+
+            metric_values = pd.to_numeric(df[column_name], errors="coerce")
+            row[label] = metric_values.mean()
+            has_any_metric = True
+
+        if has_any_metric:
+            dataset_rows.append(row)
+
+    if not dataset_rows:
+        print(f"No CSV files with fairness metrics found in {input_folder}.")
+        return
+
+    dataset_df = pd.DataFrame(dataset_rows)
+
+    print(f"\nAverage fairness metrics across datasets in {input_folder}:")
+    for label in metric_columns:
+        avg_value = pd.to_numeric(dataset_df[label], errors="coerce").mean()
+        print(f"{label}: {avg_value:.3f}")
+
+    print(f"Number of datasets: {len(dataset_df)}")
 
 
 def print_average_di_by_threshold(input_folder):
@@ -677,6 +792,491 @@ def print_average_privacy_metrics(input_folder):
             print(f"  SA{sa_num}:           {avg_beta:.2f}")
     
     print(f"\nTotal rows: {len(combined_df)}")
+
+
+def print_average_privacy_metrics_across_datasets(input_folder):
+    """
+    Calculate and print average privacy metrics across dataset subfolders.
+
+    This treats each subfolder in input_folder as one dataset. Each dataset
+    folder may contain multiple CSV files, which are combined before computing
+    that dataset's metric averages. The final result gives every dataset equal
+    weight.
+
+    Parameters:
+        input_folder (str): Folder containing one subfolder per dataset
+    """
+
+    metric_columns = {
+        "Linkability": "linkability_value",
+        "Singling Out": "singling_out_value",
+        "K-Anonymity": "k_anonymity",
+    }
+
+    dataset_rows = []
+    l_div_metrics = []
+    t_close_metrics = []
+    beta_metrics = []
+
+    for entry_name in sorted(os.listdir(input_folder)):
+        dataset_path = os.path.join(input_folder, entry_name)
+        if not os.path.isdir(dataset_path):
+            continue
+
+        csv_paths = [
+            os.path.join(dataset_path, file_name)
+            for file_name in sorted(os.listdir(dataset_path))
+            if file_name.endswith(".csv")
+        ]
+
+        if not csv_paths:
+            continue
+
+        dataset_frames = [
+            pd.read_csv(file_path).replace([np.inf, -np.inf], np.nan)
+            for file_path in csv_paths
+        ]
+        df = pd.concat(dataset_frames, ignore_index=True)
+
+        row = {"dataset": entry_name}
+        has_any_metric = False
+
+        for label, column_name in metric_columns.items():
+            if column_name not in df.columns:
+                row[label] = np.nan
+                continue
+
+            metric_values = pd.to_numeric(df[column_name], errors="coerce")
+            row[label] = metric_values.mean()
+            has_any_metric = True
+
+        l_div_cols = [col for col in df.columns if col.startswith("l_diversity_sa")]
+        t_close_cols = [col for col in df.columns if col.startswith("t_closeness_sa")]
+        beta_cols = [col for col in df.columns if col.startswith("beta_likeness_sa")]
+
+        for col in l_div_cols:
+            l_div_metrics.append(pd.to_numeric(df[col], errors="coerce").mean())
+        for col in t_close_cols:
+            t_close_metrics.append(pd.to_numeric(df[col], errors="coerce").mean())
+        for col in beta_cols:
+            beta_metrics.append(pd.to_numeric(df[col], errors="coerce").mean())
+
+        if has_any_metric:
+            dataset_rows.append(row)
+
+    if not dataset_rows:
+        print(f"No CSV files with privacy metrics found in {input_folder}.")
+        return
+
+    dataset_df = pd.DataFrame(dataset_rows)
+
+    print(f"\nAverage privacy metrics across datasets in {input_folder}:")
+    for label in metric_columns:
+        avg_value = pd.to_numeric(dataset_df[label], errors="coerce").mean()
+        print(f"{label}: {avg_value:.6f}")
+
+    if l_div_metrics:
+        print(f"L-Diversity:        {pd.Series(l_div_metrics).mean():.2f}")
+    if t_close_metrics:
+        print(f"T-Closeness:        {pd.Series(t_close_metrics).mean():.6f}")
+    if beta_metrics:
+        print(f"Beta-Likeness:      {pd.Series(beta_metrics).mean():.2f}")
+
+    print(f"Number of datasets: {len(dataset_df)}")
+
+
+def summarize_fairness_and_linkability_by_dataset(
+    fairness_root,
+    linkability_root=None,
+    output_csv=None,
+):
+    """
+    Summarize fairness metrics and linkability for each dataset folder.
+
+    The function returns one row per dataset and metric with:
+        - mean
+        - median
+        - std
+        - min
+        - max
+        - n
+
+    Fairness metrics:
+        AOD_protected, EOD_protected, SPD, DI, F1 Score
+
+    Linkability metric:
+        linkability_value
+
+    Parameters:
+        fairness_root (str): Root folder containing dataset subfolders for fairness CSVs.
+        linkability_root (str, optional): Root folder containing dataset subfolders for linkability CSVs.
+            If omitted, only fairness metrics are summarized.
+        output_csv (str, optional): Path to save the resulting summary table.
+
+    Returns:
+        pd.DataFrame
+    """
+
+    fairness_metrics = ["AOD_protected", "EOD_protected", "SPD", "DI", "F1 Score"]
+    summary_rows = []
+
+    def _collect_csv_frames(folder_path):
+        csv_paths = [
+            os.path.join(folder_path, file_name)
+            for file_name in sorted(os.listdir(folder_path))
+            if file_name.endswith(".csv")
+        ]
+        if not csv_paths:
+            return pd.DataFrame()
+
+        frames = []
+        for file_path in csv_paths:
+            try:
+                frames.append(pd.read_csv(file_path).replace([np.inf, -np.inf], np.nan))
+            except Exception:
+                continue
+
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
+    def _summary_values(values):
+        numeric_values = pd.to_numeric(pd.Series(values), errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        if numeric_values.empty:
+            return {
+                "n": 0,
+                "mean": np.nan,
+                "median": np.nan,
+                "std": np.nan,
+                "min": np.nan,
+                "max": np.nan,
+            }
+
+        return {
+            "n": int(numeric_values.shape[0]),
+            "mean": float(numeric_values.mean()),
+            "median": float(numeric_values.median()),
+            "std": float(numeric_values.std(ddof=1)) if numeric_values.shape[0] > 1 else 0.0,
+            "min": float(numeric_values.min()),
+            "max": float(numeric_values.max()),
+        }
+
+    def _append_metric_rows(dataset_name, metric_name, values):
+        stats = _summary_values(values)
+        summary_rows.append(
+            {
+                "dataset": dataset_name,
+                "metric": metric_name,
+                **stats,
+            }
+        )
+
+    def _process_dataset_folder(dataset_name, dataset_path, metric_names, value_column_candidates):
+        df = _collect_csv_frames(dataset_path)
+        if df.empty:
+            return
+        # --- Auto-correct DI centering if values appear shifted around 0 ---
+        if "DI" in df.columns:
+            try:
+                di_vals = pd.to_numeric(df["DI"], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+                if not di_vals.empty:
+                    # Mean squared distance to 0 vs to 1
+                    msd0 = ((di_vals - 0.0) ** 2).mean()
+                    msd1 = ((di_vals - 1.0) ** 2).mean()
+                    # If values are overall closer to 0 than to 1, assume they were centered (DI-1)
+                    # and restore by adding 1. This handles cases where DI was shifted to be
+                    # centered at 0 instead of 1.
+                    if msd0 < msd1:
+                        df["DI"] = pd.to_numeric(df["DI"], errors="coerce") + 1.0
+                        print(f"Auto-corrected DI centering for dataset '{dataset_name}' (added 1.0)")
+            except Exception:
+                # If anything goes wrong, leave DI as-is
+                pass
+
+        for metric_name in metric_names:
+            if metric_name in df.columns:
+                _append_metric_rows(dataset_name, metric_name, df[metric_name])
+
+        for metric_name, candidates in value_column_candidates.items():
+            if metric_name in df.columns:
+                continue
+            for candidate in candidates:
+                if candidate in df.columns:
+                    _append_metric_rows(dataset_name, metric_name, df[candidate])
+                    break
+
+    fairness_metric_candidates = {
+        "linkability": ["linkability_value", "value"],
+    }
+
+    if os.path.isdir(fairness_root):
+        fairness_csvs = [name for name in os.listdir(fairness_root) if name.endswith(".csv")]
+        if fairness_csvs:
+            _process_dataset_folder(
+                os.path.basename(os.path.normpath(fairness_root)),
+                fairness_root,
+                fairness_metrics,
+                fairness_metric_candidates,
+            )
+        else:
+            for dataset_name in sorted(os.listdir(fairness_root)):
+                dataset_path = os.path.join(fairness_root, dataset_name)
+                if not os.path.isdir(dataset_path):
+                    continue
+                _process_dataset_folder(dataset_name, dataset_path, fairness_metrics, fairness_metric_candidates)
+
+    if linkability_root and os.path.isdir(linkability_root):
+        linkability_csvs = [name for name in os.listdir(linkability_root) if name.endswith(".csv")]
+        if linkability_csvs:
+            _process_dataset_folder(
+                os.path.basename(os.path.normpath(linkability_root)),
+                linkability_root,
+                [],
+                fairness_metric_candidates,
+            )
+        else:
+            for dataset_name in sorted(os.listdir(linkability_root)):
+                dataset_path = os.path.join(linkability_root, dataset_name)
+                if not os.path.isdir(dataset_path):
+                    continue
+                _process_dataset_folder(dataset_name, dataset_path, [], fairness_metric_candidates)
+
+    if not summary_rows:
+        print("No fairness or linkability metrics found in the provided folders.")
+        return pd.DataFrame()
+
+    summary_df = pd.DataFrame(summary_rows).sort_values(["dataset", "metric"]).reset_index(drop=True)
+
+    if output_csv:
+        os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+        summary_df.to_csv(output_csv, index=False)
+        print(f"Saved dataset metric summary to {output_csv}")
+
+    return summary_df
+
+
+def select_best_configurations_by_epsilon(
+    fairness_root,
+    linkability_root,
+    output_csv=None,
+    linkability_threshold=0.05,
+    min_f1_score=0.75,
+):
+    """
+    Select the best configuration for each dataset and epsilon.
+
+    The selector keeps configurations whose average linkability is at or below
+    `linkability_threshold` and whose average F1 Score is above `min_f1_score`,
+    then ranks them by:
+        1. Highest F1 Score
+        2. Lowest combined fairness distance
+        3. Lowest linkability
+
+    The fairness distance is computed as:
+        |AOD_protected| + |EOD_protected| + |SPD| + |DI - 1|
+
+    Parameters:
+        fairness_root (str): Root folder containing fairness CSVs.
+        linkability_root (str): Root folder containing linkability CSVs.
+        output_csv (str, optional): Path to save the selected configurations.
+        linkability_threshold (float): Maximum allowed mean linkability.
+        min_f1_score (float): Minimum allowed mean F1 Score.
+
+    Returns:
+        pd.DataFrame
+    """
+
+    fairness_metrics = ["AOD_protected", "EOD_protected", "SPD", "DI", "F1 Score"]
+    fairness_ideals = {
+        "AOD_protected": 0.0,
+        "EOD_protected": 0.0,
+        "SPD": 0.0,
+        "DI": 1.0,
+    }
+
+    def _collect_csv_frames(folder_path):
+        csv_paths = [
+            os.path.join(folder_path, file_name)
+            for file_name in sorted(os.listdir(folder_path))
+            if file_name.endswith(".csv")
+        ]
+        if not csv_paths:
+            return pd.DataFrame()
+
+        frames = []
+        for file_path in csv_paths:
+            try:
+                frames.append(pd.read_csv(file_path).replace([np.inf, -np.inf], np.nan))
+            except Exception:
+                continue
+
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
+    def _extract_epsilon(file_str):
+        match = re.search(r"_eps([\d.]+)", str(file_str))
+        return float(match.group(1)) if match else np.nan
+
+    def _normalize_config_key(file_str):
+        base_name = os.path.basename(str(file_str))
+        return re.sub(r"_thresh[\d.]+$", "", base_name)
+
+    def _dataset_folders(root_path):
+        if not os.path.isdir(root_path):
+            raise FileNotFoundError(f"Folder not found: {root_path}")
+
+        csv_files = [name for name in os.listdir(root_path) if name.endswith(".csv")]
+        if csv_files:
+            return {os.path.basename(os.path.normpath(root_path)): root_path}
+
+        folders = {}
+        for entry_name in sorted(os.listdir(root_path)):
+            entry_path = os.path.join(root_path, entry_name)
+            if os.path.isdir(entry_path):
+                folders[entry_name] = entry_path
+        return folders
+
+    def _prepare_metric_table(dataset_name, df, metric_columns, file_column_name):
+        if df.empty or file_column_name not in df.columns:
+            return pd.DataFrame()
+
+        working = df.copy()
+        working["dataset"] = dataset_name
+        working["source_file"] = working[file_column_name].astype(str)
+        working["epsilon"] = working["source_file"].apply(_extract_epsilon)
+        working["config_variant"] = working["source_file"].apply(lambda value: os.path.basename(str(value)))
+        working["base_config"] = working["config_variant"].apply(_normalize_config_key)
+
+        needed_columns = [column for column in metric_columns if column in working.columns]
+        if not needed_columns:
+            return pd.DataFrame()
+
+        grouped = (
+            working.dropna(subset=["epsilon", "base_config"])
+            .groupby(["dataset", "epsilon", "config_variant", "base_config"], dropna=True)[needed_columns]
+            .mean()
+            .reset_index()
+        )
+        return grouped
+
+    def _build_fairness_table(root_path):
+        tables = []
+        for dataset_name, dataset_path in _dataset_folders(root_path).items():
+            df = _collect_csv_frames(dataset_path)
+            if df.empty:
+                continue
+            file_column_name = "File" if "File" in df.columns else None
+            if file_column_name is None:
+                continue
+            table = _prepare_metric_table(dataset_name, df, fairness_metrics, file_column_name)
+            if not table.empty:
+                tables.append(table)
+        if not tables:
+            return pd.DataFrame()
+        return pd.concat(tables, ignore_index=True)
+
+    def _build_linkability_table(root_path):
+        tables = []
+        for dataset_name, dataset_path in _dataset_folders(root_path).items():
+            df = _collect_csv_frames(dataset_path)
+            if df.empty:
+                continue
+            file_column_name = "file" if "file" in df.columns else ("File" if "File" in df.columns else None)
+            if file_column_name is None:
+                continue
+            table = _prepare_metric_table(dataset_name, df, ["linkability_value", "value"], file_column_name)
+            if not table.empty:
+                if "linkability_value" not in table.columns and "value" in table.columns:
+                    table = table.rename(columns={"value": "linkability_value"})
+                if "linkability_value" not in table.columns:
+                    continue
+                tables.append(table[["dataset", "epsilon", "base_config", "linkability_value"]])
+        if not tables:
+            return pd.DataFrame()
+        return pd.concat(tables, ignore_index=True)
+
+    fairness_table = _build_fairness_table(fairness_root)
+    linkability_table = _build_linkability_table(linkability_root)
+
+    if fairness_table.empty:
+        print(f"No fairness metric rows found in {fairness_root}.")
+        return pd.DataFrame()
+    if linkability_table.empty:
+        print(f"No linkability rows found in {linkability_root}.")
+        return pd.DataFrame()
+
+    merged = fairness_table.merge(
+        linkability_table,
+        on=["dataset", "epsilon", "base_config"],
+        how="left",
+    )
+
+    merged = merged.replace([np.inf, -np.inf], np.nan).dropna(subset=["epsilon", "linkability_value", "F1 Score"])
+    merged["linkability_ok"] = merged["linkability_value"] <= linkability_threshold
+    merged["f1_ok"] = merged["F1 Score"] > min_f1_score
+    merged["fairness_distance"] = (
+        merged["AOD_protected"].abs()
+        + merged["EOD_protected"].abs()
+        + merged["SPD"].abs()
+        + (merged["DI"] - 1.0).abs()
+    )
+
+    selected_rows = []
+    group_columns = ["dataset", "epsilon"]
+
+    for (dataset_name, epsilon), group_df in merged.groupby(group_columns, dropna=True):
+        feasible_df = group_df[group_df["linkability_ok"] & group_df["f1_ok"]].copy()
+        if feasible_df.empty:
+            print(
+                f"Skipping {dataset_name} epsilon={epsilon}: no configuration met "
+                f"linkability <= {linkability_threshold} and F1 Score > {min_f1_score}"
+            )
+            continue
+
+        candidate_df = feasible_df.sort_values(
+            by=["F1 Score", "fairness_distance", "linkability_value", "config_variant"],
+            ascending=[False, True, True, True],
+        )
+
+        best_row = candidate_df.iloc[0].copy()
+        best_row["candidate_count"] = int(len(group_df))
+        best_row["feasible_count"] = int(len(feasible_df))
+        best_row["selection_status"] = "feasible"
+        selected_rows.append(best_row)
+
+    output_columns = [
+        "dataset",
+        "epsilon",
+        "config_variant",
+        "base_config",
+        "linkability_value",
+        "linkability_ok",
+        "f1_ok",
+        "F1 Score",
+        "AOD_protected",
+        "EOD_protected",
+        "SPD",
+        "DI",
+        "fairness_distance",
+        "candidate_count",
+        "feasible_count",
+        "selection_status",
+    ]
+
+    if not selected_rows:
+        result_df = pd.DataFrame(columns=output_columns)
+    else:
+        result_df = pd.DataFrame(selected_rows).sort_values(["dataset", "epsilon"]).reset_index(drop=True)
+
+    result_df = result_df[[column for column in output_columns if column in result_df.columns]]
+
+    if output_csv:
+        os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+        result_df.to_csv(output_csv, index=False)
+        print(f"Saved best-configuration summary to {output_csv}")
+
+    return result_df
 
 def compute_singleouts_di_recall(
     base_results_folder,
@@ -1346,8 +1946,12 @@ def analyze_fold_csvs(
 
 if __name__ == "__main__":
     input_folder = "results_metrics/fairness_results/outputs_4/RF_42/8"
-    input_folder_improved = "results_metrics/fairness_results/outputs_4/tomek_class_only/compas"
-    linkability_folder = "results_metrics/linkability_results/outputs_4/german_qis_full/german"
+    input_folder_improved = "results_metrics/fairness_results/outputs_4/cluster/none/student"
+
+    linkability_folder = "results_metrics/linkability_results/_cluster/none/55"
+
+    input_folder_cluster_fairness = "results_metrics/fairness_results/outputs_4/cluster/none"
+    input_folder_cluster_privacy = "results_metrics/linkability_results/outputs_4/test_original"
 
     
     #average_fairness_by_epsilon(input_folder)
@@ -1359,9 +1963,86 @@ if __name__ == "__main__":
     #print_average_di_excluding_both(input_folder, [0.1, 0.5, 1.0, 5.0], [0,2,3,4])
     #print_average_di_by_threshold(input_folder_improved)
     #print_average_privacy_metrics(linkability_folder)
+    #print_average_fairness_metrics(input_folder_improved)
+    #print_average_fairness_metrics_across_datasets(input_folder_cluster_fairness)
+    print_average_privacy_metrics_across_datasets(input_folder_cluster_privacy)
 
-    print_average_di(input_folder_improved)
+    #print_average_di(input_folder_improved)
+    test_datasets_root = os.path.join("datasets", "inputs", "test")
+    summary_frames = []
+    for file_name in sorted(os.listdir(test_datasets_root)):
+        if not file_name.endswith(".csv"):
+            continue
 
+        dataset = os.path.splitext(file_name)[0]
+        if dataset == "56":
+            continue
+
+        root_fairness = f"old/experiment/first/fairness/test_fair/{dataset}"
+        root_linkability = f"results_metrics/linkability_results/_cluster/none/{dataset}"
+
+        if not os.path.isdir(root_fairness):
+            print(f"Skipping {dataset}: fairness folder not found")
+            continue
+        if not os.path.isdir(root_linkability):
+            print(f"Skipping {dataset}: linkability folder not found")
+            continue
+
+        summarize_fairness_and_linkability_by_dataset(
+           root_fairness,
+           root_linkability,
+           output_csv=f"results_metrics/median_fair_new/summary_{dataset}.csv",
+        )
+        summary_path = f"results_metrics/median_fair_new/summary_{dataset}.csv"
+        if os.path.isfile(summary_path):
+            summary_frames.append(pd.read_csv(summary_path))
+
+    if summary_frames:
+        summary_all_df = pd.concat(summary_frames, ignore_index=True)
+        summary_all_df = summary_all_df.sort_values(by=["dataset", "metric"]).reset_index(drop=True)
+        summary_all_path = "results_metrics/median_fair_new/summary_all.csv"
+        summary_all_df.to_csv(summary_all_path, index=False)
+        print(f"Saved combined summary to {summary_all_path}")
+
+        numeric_columns = ["n", "mean", "median", "std", "min", "max"]
+        summary_full_df = (
+            summary_all_df
+            .groupby("metric", as_index=False)[numeric_columns]
+            .median()
+            .sort_values(by="metric")
+            .reset_index(drop=True)
+        )
+        summary_full_df.insert(0, "dataset", "full")
+        summary_full_path = "results_metrics/median_fair_new/summary_full.csv"
+        summary_full_df.to_csv(summary_full_path, index=False)
+        print(f"Saved full combined summary to {summary_full_path}")
+    '''
+    for file_name in sorted(os.listdir(test_datasets_root)):
+        if not file_name.endswith(".csv"):
+            continue
+
+        dataset = os.path.splitext(file_name)[0]
+        if dataset == "56":
+            continue
+
+        root_fairness = f"results_metrics/fairness_results/outputs_4/cluster/none/{dataset}"
+        root_linkability = f"results_metrics/linkability_results/_cluster/none/{dataset}"
+
+        if not os.path.isdir(root_fairness):
+            print(f"Skipping {dataset} best-config selection: fairness folder not found")
+            continue
+        if not os.path.isdir(root_linkability):
+            print(f"Skipping {dataset} best-config selection: linkability folder not found")
+            continue
+
+        select_best_configurations_by_epsilon(
+            root_fairness,
+            root_linkability,
+            output_csv=f"results_metrics/best_configs/best_configs_{dataset}.csv",
+            linkability_threshold=0.05,
+            min_f1_score=0.75,
+        )
+    '''
     '''
     analyze_fold_csvs(
     [
