@@ -41,16 +41,21 @@ To instead deploy as a drop-in replacement, back up and copy each file over its
    `typology_metadata` it already computes per fold (no disk round-trip).
 2. **Step 1** — attach `dataset['is_outlier']`. The de-isolation target is the
    **intersection** `single_out & is_outlier`.
-3. **Step 5 (majority) & Step 6a (minority)** — replacement is **retargeted** from
-   *all* single-outs to the intersection. This is a 1:1 replacement, so it is
-   **count-neutral**: zero budget cost, subgroup sizes unchanged. (`df_rest + replaced
-   == df_subset`.) When a cell has no outlier single-outs, the originals are kept and
-   the fold is **not** aborted.
+3. **Step 5 (majority) & Step 6a (minority)** — replacement covers **all** single-outs
+   (same coverage as stock — privacy-safe). It is a 1:1 replacement, so **count-neutral**:
+   zero budget cost, subgroup sizes unchanged (`df_rest + replaced == df_subset`). The
+   only behavioural change vs stock is robustness: when a cell has too few single-outs to
+   build the KNN graph, originals are kept and the fold is **not** aborted.
+   **Important:** do NOT narrow replacement to the `outlier ∩ single-out` intersection —
+   on high-single-out datasets (3/13, ~100% single-outs) that leaves raw single-out
+   originals in the release and linkability rises sharply (validated empirically;
+   risk jumped from ~0.05 to ~0.80). The outlier flag is used only as the Step 6b add-on.
 4. **Step 6b (augmentation)** — the **fixed** `samples_to_increase` budget is *seeded*
-   from the intersection rows (via the `highest_risk` selector inside
+   from the `outlier ∩ single-out` rows (via the `highest_risk` selector inside
    `newPrivateSMOTE.over_sampling`), so synthetic decoys densify/dilute the most
    linkable rows. Total generated rows is unchanged → **budget unchanged**. Falls back
-   to all single-outs when the intersection is empty in a cell.
+   to all single-outs when the intersection is empty in a cell. This is the one place the
+   outlier signal actually steers synthesis.
 5. **Step 7.5 / Step 8** — `is_outlier` is excluded from the Tomek-link feature matrix
    and dropped from the final output (like `single_out`/`synthetic`).
 
@@ -62,6 +67,9 @@ To instead deploy as a drop-in replacement, back up and copy each file over its
 | Step 6a minority replace  | 0 (`df_rest + replaced == df_subset`) | none |
 | Step 6b augmentation      | exactly `samples_to_increase`      | unchanged |
 
+Validated on datasets 3 & 13: per-fold output row counts match the stock pipeline
+exactly, confirming the oversampling budget and subgroup balance are preserved.
+
 Final per-subgroup counts are **identical** to the stock pipeline
 (`len(df_subset) + samples_to_increase`), so DI/SPD/AOD targets do not move. The
 de-isolation comes entirely from (i) *free* count-neutral replacement of the
@@ -70,13 +78,21 @@ toward them — never from extra rows.
 
 ## Design notes / knobs
 
-- **Why the intersection, not all single-outs.** Anonymeter linkability matches on QI
-  *near*-neighbours, so an exact-match single-out sitting in a crowded QI region is
-  already hard to link. The rows that actually leak are those that are both QI-unique
-  **and** geometric outliers. Targeting the intersection also shrinks the perturbation
-  footprint (better utility). **To revert to replacing all single-outs**, set
-  `sub_target = (df_subset['single_out'] == 1)` in Step 6a (and the majority analogue
-  in Step 5).
+- **Why replacement stays on ALL single-outs.** It is tempting to narrow replacement to
+  the `outlier ∩ single-out` intersection (the rows most linkable in theory). Empirically
+  this backfires on high-single-out datasets: leaving the non-outlier single-outs as raw
+  originals in the release spikes linkability (3/13 went from ~0.05 to ~0.80). So full
+  single-out replacement is the privacy-safe baseline, and the outlier signal is applied
+  only as the Step 6b augmentation focus. **To experiment** with intersection-only
+  replacement, append `& (df_subset['is_outlier'] == 1)` to `sub_target` in Step 6a (and
+  the majority analogue in Step 5) — useful only on datasets with *moderate* single-out
+  prevalence.
+- **Where the outlier lever actually bites.** On saturated datasets (3/13, ~100%
+  single-outs) full replacement already floors linkability, so the Step 6b focus has no
+  headroom and the method is ≈ stock. The lever is expected to matter on datasets with
+  *moderate* single-out prevalence, where replacement touches few rows. Measuring it
+  cleanly needs averaging several synthesis runs per arm (or seeding `np.random` in
+  `privatesmote_old`), since synthesis is stochastic.
 - **Detectors.** Only `Distance` and `Density` at the `Outlier` tier feed the mask —
   the tiers our correlation analysis tied to linkability. `LOF`/`Tukey` and the
   `Rare`/`Borderline` tiers are intentionally excluded. Change the mask expression in

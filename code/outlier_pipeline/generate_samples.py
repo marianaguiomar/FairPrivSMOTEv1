@@ -906,7 +906,12 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         # === OUTLIER CHANGE: target = QI-isolated AND geometric outlier (not all single-outs) ===
         # This is a 1:1 REPLACEMENT (de-isolation), so it is COUNT-NEUTRAL: it costs no
         # oversampling budget and does not change subgroup sizes / fairness balance.
-        maj_target = (df_majority['single_out'] == 1) & (df_majority['is_outlier'] == 1)
+        # NOTE: replacement covers ALL single-outs (privacy-safe). Narrowing this to the
+        # outlier intersection regresses badly on high-single-out datasets (e.g. 3/13,
+        # where ~100% of rows are single-outs) because it leaves raw single-out originals
+        # in the release. The outlier flag is used as an ADD-ON (Step 6b augmentation
+        # focus), not to shrink replacement.
+        maj_target = (df_majority['single_out'] == 1)
         df_majority_single_out = df_majority[maj_target]
         df_majority_remaining  = df_majority[~maj_target]
         print(f"majority outlier single_outs to de-isolate: {len(df_majority_single_out)}")
@@ -956,19 +961,18 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         
         df_non_single_out = df_subset[df_subset['single_out'] != 1]
 
-        # --- Step 6a: De-isolate QI-isolated geometric outliers (single_out AND is_outlier) ---
+        # --- Step 6a: Replace single-outs (count-neutral de-isolation) ---
         # === OUTLIER CHANGE ===
         # Count-neutral 1:1 REPLACEMENT (de-isolation): costs no oversampling budget and does
         # not change the subgroup size, so fairness balance is untouched.
         #
-        # We target the INTERSECTION (single_out & is_outlier) rather than all single-outs:
-        # Anonymeter linkability matches on QI NEAR-neighbours, so an exact-match single-out
-        # sitting in a crowded QI region is already hard to link -- the rows that actually leak
-        # are those that are BOTH QI-unique AND geometric outliers. Narrowing the target also
-        # shrinks the perturbation footprint (better utility).
-        #   To revert to the original behaviour (replace ALL single-outs), set
-        #   `sub_target = (df_subset['single_out'] == 1)` below.
-        sub_target = (df_subset['single_out'] == 1) & (df_subset['is_outlier'] == 1)
+        # Replacement covers ALL single-outs (privacy-safe baseline). We deliberately do NOT
+        # narrow to the outlier intersection here: on high-single-out datasets (3/13, ~100%
+        # single-outs) narrowing leaves raw single-out originals in the release and linkability
+        # rises sharply (validated empirically). The outlier flag is used as an ADD-ON in
+        # Step 6b (augmentation focus), not to shrink replacement. To experiment with
+        # intersection-only replacement, append `& (df_subset['is_outlier'] == 1)` below.
+        sub_target = (df_subset['single_out'] == 1)
         df_target = df_subset[sub_target]
         df_rest   = df_subset[~sub_target]
 
