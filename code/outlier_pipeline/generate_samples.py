@@ -27,7 +27,8 @@ from helpers.clean import unpack_value, standardize_binary
 from pipeline_helper import get_continuous_columns
 from main.privatesmote import apply_private_smote_replace
 from main.privatesmote_old import apply_private_smote_new
-from sklearn.preprocessing import KBinsDiscretizer
+from privatesmote_outlier import apply_private_smote_focused  # === OUTLIER CHANGE ===
+from sklearn.preprocessing import KBinsDiscretizer, StandardScaler  # === OUTLIER CHANGE: StandardScaler ===
 import matplotlib.pyplot as plt
 import umap
 
@@ -50,6 +51,113 @@ def _get_cached_neighbor_indices(fold_cache, subgroup_key):
         return None
 
     return subgroup_cache.get("neighbor_indices")
+
+
+# === OUTLIER CHANGE: helpers ==============================================
+def _deisolate_outlier_singleouts(dataset, dataset_name, key_vars, class_column,
+                                  protected_attribute, epsilon, knn, seed=42):
+    """In-place de-isolation of rows that are BOTH single_out AND is_outlier.
+
+    For each (class, protected) subgroup, move the target rows' CONTINUOUS QI columns
+    toward the CENTROID of their k nearest IN-SUBGROUP neighbours, by a RANDOM fraction
+    gap~U(0,1) (SMOTE-style, no tunable strength), plus Laplace(0, 1/eps) DP noise.
+    Pulling toward the centroid (not one neighbour) collapses clusters of isolated
+    outliers toward a shared point, which is what reduces QI isolation; staying within
+    the subgroup preserves the class x protected structure (fairness). Count-neutral:
+    no rows added or dropped, labels untouched.
+
+    IMPORTANT: never move the class or protected columns (even if they are QIs -- e.g.
+    'sex' is both a QI and the protected attribute in german), and skip binary/low-card
+    columns (perturbing a 0/1 QI to a fractional value is meaningless and breaks grouping;
+    stock PrivateSMOTE likewise casts 0/1 columns to object to avoid interpolating them).
+    """
+    if 'is_outlier' not in dataset.columns:
+        return dataset
+    try:
+        continuous = set(get_continuous_columns(str(dataset_name), "continuous_attributes.csv"))
+    except Exception:
+        continuous = None
+    num_qi = []
+    for c in key_vars:
+        if c not in dataset.columns or c in (class_column, protected_attribute):
+            continue
+        if not np.issubdtype(dataset[c].dtype, np.number):
+            continue
+        is_continuous = (c in continuous) if continuous is not None else (dataset[c].dropna().nunique() > 2)
+        if is_continuous:
+            num_qi.append(c)
+    if not num_qi:
+        return dataset  # nothing continuous to move -> leave for standard replacement
+    rng = np.random.default_rng(seed)
+    n_moved = 0
+    for _key, idx in dataset.groupby([class_column, protected_attribute]).groups.items():
+        sub = dataset.loc[idx]
+        tgt = sub[(sub['single_out'] == 1) & (sub['is_outlier'] == 1)]
+        if len(tgt) == 0 or len(sub) < (knn + 1):
+            continue
+        X = StandardScaler().fit_transform(sub[num_qi].astype(float))
+        nn = NN(n_neighbors=min(knn + 1, len(sub))).fit(X)
+        nbr = nn.kneighbors(X, return_distance=False)
+        pos = {lab: i for i, lab in enumerate(sub.index)}
+        for lab in tgt.index:
+            r = pos[lab]
+            neigh = [j for j in nbr[r] if j != r][:knn]
+            if not neigh:
+                continue
+            centroid = sub.iloc[neigh][num_qi].astype(float).mean(axis=0).to_numpy()
+            orig = sub.loc[lab, num_qi].astype(float).to_numpy()
+            gap = rng.random()
+            newv = orig + gap * (centroid - orig) + rng.laplace(0.0, 1.0 / epsilon, size=len(num_qi))
+            dataset.loc[lab, num_qi] = newv
+            n_moved += 1
+    print(f"de-isolated (outlier AND single_out) rows toward in-subgroup centroid: {n_moved}")
+    return dataset
+
+
+def _focused_seed_indices(outlier_pos, other_so_pos, budget, rng):
+    """Allocate `budget` synthetic seeds (positional indices, with multiplicity).
+
+    Policy (anchored to 150% of total single-outs as a FIXED rule, no swept parameter):
+      1. cover each outlier single-out once;
+      2. cover each remaining single-out once;
+      3. spend the extra on outlier single-outs, capped at +0.5*S total (so outlier
+         allocation stays within 1.5x of all single-outs S);
+      4. spill any remainder uniformly across ALL single-outs (non-exclusive).
+    Ties / order randomised via rng.
+    """
+    outlier_pos = list(outlier_pos)
+    other_so_pos = list(other_so_pos)
+    all_so = outlier_pos + other_so_pos
+    S = len(all_so)
+    seeds = []
+    if budget <= 0 or S == 0:
+        return seeds
+
+    def shuffled(xs):
+        xs = list(xs); rng.shuffle(xs); return xs
+
+    # 1. outliers once
+    for i in shuffled(outlier_pos):
+        if len(seeds) >= budget: break
+        seeds.append(i)
+    # 2. other single-outs once
+    for i in shuffled(other_so_pos):
+        if len(seeds) >= budget: break
+        seeds.append(i)
+    # 3. extra focus on outliers, capped at +0.5*S
+    cap_extra = max(0, int(1.5 * S) - S)
+    extra = shuffled(outlier_pos) if outlier_pos else []
+    j = 0
+    while len(seeds) < budget and cap_extra > 0 and extra:
+        seeds.append(extra[j % len(extra)]); j += 1; cap_extra -= 1
+    # 4. spill remainder across all single-outs (non-exclusive)
+    pool = shuffled(all_so)
+    j = 0
+    while len(seeds) < budget and pool:
+        seeds.append(pool[j % len(pool)]); j += 1
+    return seeds[:budget]
+# === END OUTLIER CHANGE ===================================================
+
 
 def remove_tomek_links(df, class_column, protected_attribute, majority_class, removal_strategy="majority_only", extra_rules=None):
     df = df.copy().reset_index(drop=True)
@@ -855,7 +963,14 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         dataset['is_outlier'] = np.asarray(outlier_mask).astype(int)
     else:
         dataset['is_outlier'] = 0
-    # The de-isolation target is the INTERSECTION: QI-isolated (single_out) AND geometric outlier.
+
+    # De-isolate the rows that are BOTH single_out AND outlier: move their numeric QI
+    # toward the in-subgroup neighbour centroid (random gap + Laplace). Done in place so
+    # the downstream replacement (other single-outs) and augmentation see the relocated
+    # rows. These rows are then EXCLUDED from standard PrivateSMOTE replacement (handled
+    # here) and kept as (de-isolated) originals -- count-neutral, in-subgroup.
+    dataset = _deisolate_outlier_singleouts(
+        dataset, dataset_name, key_vars, class_column, protected_attribute, epsilon, knn)
     # === END OUTLIER CHANGE ===
 
     # --- Step 2: Count class + protected attribute combinations ---
@@ -906,12 +1021,11 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         # === OUTLIER CHANGE: target = QI-isolated AND geometric outlier (not all single-outs) ===
         # This is a 1:1 REPLACEMENT (de-isolation), so it is COUNT-NEUTRAL: it costs no
         # oversampling budget and does not change subgroup sizes / fairness balance.
-        # NOTE: replacement covers ALL single-outs (privacy-safe). Narrowing this to the
-        # outlier intersection regresses badly on high-single-out datasets (e.g. 3/13,
-        # where ~100% of rows are single-outs) because it leaves raw single-out originals
-        # in the release. The outlier flag is used as an ADD-ON (Step 6b augmentation
-        # focus), not to shrink replacement.
-        maj_target = (df_majority['single_out'] == 1)
+        # Standard PrivateSMOTE replacement covers the NON-outlier single-outs. The
+        # outlier single-outs were already de-isolated in place (centroid pull) and are
+        # kept as originals -- so exclude them here to avoid double-processing. Together
+        # this still de-isolates EVERY single-out (privacy-safe), just via two mechanisms.
+        maj_target = (df_majority['single_out'] == 1) & (df_majority['is_outlier'] == 0)
         df_majority_single_out = df_majority[maj_target]
         df_majority_remaining  = df_majority[~maj_target]
         print(f"majority outlier single_outs to de-isolate: {len(df_majority_single_out)}")
@@ -966,13 +1080,10 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         # Count-neutral 1:1 REPLACEMENT (de-isolation): costs no oversampling budget and does
         # not change the subgroup size, so fairness balance is untouched.
         #
-        # Replacement covers ALL single-outs (privacy-safe baseline). We deliberately do NOT
-        # narrow to the outlier intersection here: on high-single-out datasets (3/13, ~100%
-        # single-outs) narrowing leaves raw single-out originals in the release and linkability
-        # rises sharply (validated empirically). The outlier flag is used as an ADD-ON in
-        # Step 6b (augmentation focus), not to shrink replacement. To experiment with
-        # intersection-only replacement, append `& (df_subset['is_outlier'] == 1)` below.
-        sub_target = (df_subset['single_out'] == 1)
+        # Standard PrivateSMOTE replacement covers the NON-outlier single-outs. The outlier
+        # single-outs were already de-isolated in place (centroid pull, kept as originals),
+        # so exclude them here. Every single-out is still de-isolated, via two mechanisms.
+        sub_target = (df_subset['single_out'] == 1) & (df_subset['is_outlier'] == 0)
         df_target = df_subset[sub_target]
         df_rest   = df_subset[~sub_target]
 
@@ -1020,32 +1131,31 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             print("Unique protected values (if included in data):", df_subset['sex'].unique())
             '''
             
-            subgroup_neighbor_indices = _get_cached_neighbor_indices(
-                fold_cache,
-                (class_tuple[0], class_tuple[1]),
-            )
             # === OUTLIER CHANGE ===
-            # Bias the FIXED augmentation budget toward outlier single-outs: the synthetic
-            # rows are seeded from these rows (via the 'highest_risk' selector inside
-            # newPrivateSMOTE.over_sampling), so the budget produces decoys that densify /
-            # dilute the most linkable rows. Total generated == num_samples, so the fairness
-            # oversampling budget is unchanged. Fall back to all single-outs if the
-            # intersection is empty in this cell.
-            seed_flag = ((df_subset['single_out'] == 1) & (df_subset['is_outlier'] == 1)).astype(int)
-            if seed_flag.sum() == 0:
-                seed_flag = (df_subset['single_out'] == 1).astype(int)
-            # === END OUTLIER CHANGE ===
-            augmented = apply_private_smote_new(
+            # Spend the FIXED augmentation budget (num_samples) with a coverage-first /
+            # outlier-focused allocation (see _focused_seed_indices): cover outlier
+            # single-outs first, then all single-outs, then focus the extra on outliers up
+            # to 1.5x of all single-outs, then spill across all single-outs. Total generated
+            # == num_samples, so the fairness oversampling budget is unchanged. Seeds are
+            # POSITIONAL indices into df_subset (apply_private_smote_focused resets index).
+            so_pos   = (df_subset['single_out'] == 1).to_numpy()
+            outl_pos = (df_subset['is_outlier'] == 1).to_numpy()
+            outlier_seed_pos = list(np.where(so_pos & outl_pos)[0])
+            other_so_pos     = list(np.where(so_pos & ~outl_pos)[0])
+            seeds = _focused_seed_indices(
+                outlier_seed_pos, other_so_pos, num_samples, np.random.default_rng(42))
+            # Neighbours recomputed on the (de-isolated) df_subset, so don't use the stale cache.
+            augmented = apply_private_smote_focused(
                 df_subset.drop(columns=["single_out", "is_outlier"]),
                 epsilon,
-                num_samples,
-                False,
+                seeds,
                 knn,
                 k,
                 key_vars,
-                seed_flag,  # === OUTLIER CHANGE: was df_subset['single_out'] ===
-                precomputed_neighbor_indices=subgroup_neighbor_indices,
+                (df_subset['single_out'] == 1).astype(int),
+                precomputed_neighbor_indices=None,
             )
+            # === END OUTLIER CHANGE ===
             # Drop "highest_risk" column if it exists
             if 'highest_risk' in augmented.columns:
                 augmented = augmented.drop(columns=['highest_risk'])
