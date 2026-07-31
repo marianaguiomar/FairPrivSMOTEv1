@@ -572,16 +572,15 @@ def run_all_removal_strategies(input_folder):
 #input_folder_name = "compas"
 #final_folder_name = "tomek_class_only"
 input_folder_name = "test"                 # all 13 datasets live in datasets/inputs/test
-final_folder_name = os.environ.get("FPS_GROUP", "disjunct_mitigation")  # override group via FPS_GROUP
-                                           # outputs -> datasets/outputs/outputs_4/<group>
-                                           # results -> results_metrics/*/outputs_4/<group>
+final_folder_name = "disjunct_mitigation"  # outputs -> datasets/outputs/outputs_4/disjunct_mitigation
+                                           # results -> results_metrics/*/outputs_4/disjunct_mitigation
 method_number = "3"
 
 removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
 extra_rules = None       # Options: "synthetic_only", "single_out_only", None
 binning = None           # Options: 'uniform', 'quantile', 'kmeans', None
 qi_only_visualization = False  # False -> actually synthesize and write the FP-SMOTE files
-
+ok
 ### Disjunct-aware FP-SMOTE: AOD-targeted, small-disjunct-scoped oversampling ###
 # Mechanism lives in the LOCAL generate_samples.new_apply, gated by env vars:
 #   FPS_DISJUNCT_AWARE=1   enable mitigation (1) focused allocation + (2) borrowing  [ON below]
