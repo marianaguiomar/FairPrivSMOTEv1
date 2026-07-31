@@ -8,6 +8,7 @@ import sys
 import re
 from sklearn.model_selection import StratifiedKFold 
 import psutil, os
+import numpy as np
 
 
 from pipeline_helper import get_key_vars, get_class_column, process_protected_attributes, check_protected_attribute, build_fold_subgroup_cache
@@ -19,14 +20,15 @@ from metrics.metrics import process_linkability, process_fairness, process_fairn
 from metrics.plots import plot_feature_across_files
 from others.prep_datasets_new import split_datasets
 from others.fair import generate_samples
+from outliers.outliers import TypologyDetector
 
 
-epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
+epsilon_values = [0.1, 0.5, 1.0, 5.0]
 #epsilon_values = [0.5, 1.0, 5.0]
 k_values = [3,5]
 knn_values = [3,5]
 #augmentation_values = [0.6, 0.8]
-augmentation_values = [0.3, 0.4]
+augmentation_values = [0.4]
 per_values = [2, 3]
 '''
 epsilon_values = [0.5]
@@ -115,12 +117,10 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
     for file_name in os.listdir(input_folder):
         if not file_name.endswith(".csv"):
             continue
-
-        done = ["3.csv", "13.csv", "23.csv", "33.csv", "37.csv", "55.csv", "56.csv", "compas.csv", "german.csv", "oulad.csv", "student.csv"]
-        if binning == "quantile":
-            if file_name in done:
-                print(f"{file_name} already processed with binning {binning}, skipping")
-                continue
+        
+        done = ["adult"]
+        if file_name not in [f"{d}.csv" for d in done]:
+            continue
             
         file_path = os.path.join(input_folder, file_name)
         data = pd.read_csv(file_path)
@@ -182,6 +182,37 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 output_fold_folder = os.path.join(final_output_folder, f"{dataset_name}/fold{fold_idx+1}")
                 os.makedirs(output_fold_folder, exist_ok=True)
                 '''
+                # ---------------------------------------------------------
+                # --- NEW EXPLORATORY DETECTION (SAFE & DECOUPLED) ---
+                # ---------------------------------------------------------
+                print(f"  -> Running outlier detection for Fold {fold_idx}...")
+                
+                try:
+                    # Filter for numerical columns to avoid scikit-learn crashing on text
+                    num_train_data = train_data.select_dtypes(include=[np.number])
+                    
+                    detector = TypologyDetector(k=5, tau=0.5, eps=0.5, min_samples=5)
+                    typology_metadata = detector.map_all(num_train_data)
+                    
+                    # --- THE 3 TRACEABILITY COLUMNS ---
+                    typology_metadata['original_index'] = train_idx
+                    typology_metadata['target_label'] = train_data[class_column].values
+                    typology_metadata['protected_attr'] = train_data[protected_attribute].values
+                    
+                    # Create the folder automatically based strictly on the dataset name
+                    exploratory_folder = os.path.join("exploratory_metadata", dataset_name)
+                    os.makedirs(exploratory_folder, exist_ok=True)
+                    
+                    csv_path = os.path.join(exploratory_folder, f"fold_{fold_idx}_typologies.csv")
+                    
+                    # Save ONLY the 4 outlier columns + 3 traceability columns
+                    typology_metadata.to_csv(csv_path, index=False)
+                    print(f"  -> Fold {fold_idx} metadata safely saved to {csv_path}")
+                except Exception as e:
+                    print(f"  -> Skipping outlier detection for {dataset_name} Fold {fold_idx} due to error: {e}")
+                # ---------------------------------------------------------
+                '''
+                '''
                 print_fold_composition(
                     train_data=train_data,
                     test_data=test_data,
@@ -204,6 +235,8 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                         qi,
                         max(knn_values),
                     )
+
+                    
                     for epsilon in epsilon_values:
                         for k in k_values:
                             for knn in knn_values:
@@ -221,8 +254,8 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                     '''
                                     #print("QI", ix, "train checksum:", train_data.sum(numeric_only=True).sum())
                                     #train_data_before = train_data.copy()
-                                    train_data_qi = train_data.copy(deep=True)
                                     '''
+                                    train_data_qi = train_data.copy(deep=True)
                                     output_path, fitted_binners = smote_v3(
                                     data=train_data_qi,
                                     dataset_name=dataset_name, 
@@ -241,6 +274,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                     fold_cache=fold_cache,
                                     qi_only_visualization=qi_only_visualization
                                     )
+                                    
                                     if output_path is not None and fitted_binners:
                                         fitted_binners_by_file[os.path.basename(output_path)] = fitted_binners
                                     #print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
@@ -248,6 +282,7 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                     '''
                                     invalid = False
                 if not invalid:
+                    '''
                     fairness_output_file = f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv"
                     rf_seeds = fairness_rf_seeds if fairness_rf_seeds is not None else [57]
                     if len(rf_seeds) == 1:
@@ -268,7 +303,8 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                             protected_attribute=protected_attribute,
                             fitted_binners_by_file=fitted_binners_by_file,
                         )
-                    #process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
+                        '''
+                    process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
                     #process_similarity(output_fold_folder, train_data, output_file=f"results_metrics/similarity_results/outputs_4/{final_folder_name}/similarity_intermediate.csv")
                     print("")    
                 
@@ -431,7 +467,7 @@ def run_original_fairsmote(input_folder, final_folder_name):
             else:
                 print("One or more subgroups have < 3 samples. Skipping this protected attribute.")
 
-def run_all_binning_methods(input_folder_name):
+def run_all_binning_methods(input_folder_name, final_folder_name=None):
     """
     Run method_3 with all four binning methods (None, 'uniform', 'quantile', 'kmeans').
     Output folders are named after the binning method used.
@@ -440,16 +476,17 @@ def run_all_binning_methods(input_folder_name):
         input_folder_name (str): Name of the input dataset folder (e.g., 'compas', 'german')
     """
     #binning_methods = [None, 'quantile', 'uniform', 'kmeans']
-    binning_methods = ['quantile', 'uniform', 'kmeans']
+    binning_methods = ['quantile', 'uniform']
     
     for binning_method in binning_methods:
         # Set output folder name based on binning method
-        if binning_method is None:
-            #final_folder_name = f"{input_folder_name}_no_binning"
-            final_folder_name = "none"
-        else:
-            #final_folder_name = f"{input_folder_name}_{binning_method}"
-            final_folder_name = binning_method
+        if final_folder_name is None:
+            if binning_method is None:
+                #final_folder_name = f"{input_folder_name}_no_binning"
+                final_folder_name = "none"
+            else:
+                #final_folder_name = f"{input_folder_name}_{binning_method}"
+                final_folder_name = binning_method
         
         print(f"\n{'='*60}")
         print(f"Running method_3 with binning method: {binning_method}")
@@ -500,8 +537,8 @@ def run_all_removal_strategies(input_folder):
 
 #input_folder_name = "compas"
 #final_folder_name = "tomek_class_only"
-input_folder_name = "test_original"
-final_folder_name = "test_original"
+input_folder_name = "test"
+final_folder_name = "tomek_subgroup"
 method_number = "3"
 
 removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None
@@ -511,10 +548,10 @@ qi_only_visualization = True  # Set to True to enable QI-only visualization mode
 #fairness_rf_seeds = [11, 23, 37, 101]
 
 ### MY SMOTE ###
-#run_all_binning_methods("fair")
+#run_all_binning_methods("test")
 #run_all_removal_strategies("fair")
 #method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization, fairness_rf_seeds)
-#method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
+method_3(f"datasets/inputs/{input_folder_name}", epsilon_values, k_values, knn_values, augmentation_values, final_folder_name, removal_strategy, extra_rules, binning, qi_only_visualization)
 
 
 ### ORIGINAL SMOTE ###
@@ -573,8 +610,8 @@ folder_path_linkability = f"results_metrics/linkability_results/outputs_{method_
 #features_fairness = ['Recall', 'FAR', 'Precision','Accuracy', 'F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 features_fairness = ['F1 Score', 'AOD_protected', 'EOD_protected', 'SPD', 'DI']
 features_linkability = ['value']
-for feature_name in features_fairness:
-    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
+#for feature_name in features_fairness:
+#    plot_feature_across_files("results_metrics/fairness_results/to_plot", feature_name)
 
 
 #for feature_name in features_linkability:

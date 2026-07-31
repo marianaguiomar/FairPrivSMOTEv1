@@ -7,7 +7,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.stats import wilcoxon
-import scikit_posthocs as sp
+
+try:
+    import scikit_posthocs as sp
+except ImportError:  # only needed by the legacy generate_all_tables() Nemenyi path
+    sp = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -32,6 +36,7 @@ LINKABILITY_METHODS = {
 }
 
 FAIRNESS_METRICS = [
+    ("AOD", "fairness", "AOD_protected", lambda series: series.abs()),
     ("EOD", "fairness", "EOD_protected", lambda series: series.abs()),
     ("SPD", "fairness", "SPD", lambda series: series.abs()),
     ("DI", "fairness", "DI", lambda series: (series - 1.0).abs()),
@@ -39,6 +44,7 @@ FAIRNESS_METRICS = [
 
 LINKABILITY_METRICS = [
     ("Linkability", "linkability", "linkability_value", lambda series: series),
+    ("Inference Risk", "linkability", "inference_risk", lambda series: series),
 ]
 
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "results_metrics"
@@ -361,9 +367,13 @@ def perform_nemenyi_test(dataset_scores, metric_name):
     """
     Uses scikit-posthocs to perform a true Nemenyi test based on raw scores.
     """
+    if sp is None:
+        print(f"--- Nemenyi Test: {metric_name} --- (skipped: scikit-posthocs not installed)\n")
+        return
+
     m1, m2 = list(dataset_scores.keys())
     data_matrix = []
-    
+
     # Pair up the scores for each dataset to build the matrix
     for i in range(len(dataset_scores[m1])):
         val1 = dataset_scores[m1][i]
@@ -395,6 +405,246 @@ def perform_nemenyi_test(dataset_scores, metric_name):
         
     except Exception as e:
         print(f"Could not calculate Nemenyi for {metric_name}: {e}\n")
+
+
+# ---------------------------------------------------------------------------
+# THESIS TABLE GENERATION
+#
+# Emits the *exact* LaTeX used in 5-preliminary_results.tex for:
+#   * Table 5.1 (tab:linkability_ranks)      -> Linkability + Inference rank groups
+#   * Table 5.2 (tab:master_fairness_ranks)  -> AOD + EOD + SPD + DI + Aggregated groups
+# The Nemenyi post-hoc p-value for the two-method case is reproduced with
+# scipy's studentized range (scikit-posthocs is not required for this path).
+# ---------------------------------------------------------------------------
+
+INFERENCE_VALUE_COLS = ["inference_value_sa0", "inference_value_sa1", "inference_value_sa2"]
+
+
+def _thesis_dataset_order(target_datasets):
+    """Datasets sorted alphabetically by their *display* name, matching the thesis."""
+    datasets = _get_common_datasets(FAIRNESS_METHODS, target_datasets)
+    return sorted(datasets, key=lambda d: _format_dataset_name(d).lower())
+
+
+def _read_inference_average(dataset_dir: Path):
+    """Pool the per-sensitive-attribute inference columns (NaN pads dropped) and average."""
+    frames = []
+    if not dataset_dir.exists():
+        return np.nan
+    for csv_path in sorted(dataset_dir.rglob("*.csv")):
+        try:
+            frame = pd.read_csv(csv_path)
+        except pd.errors.EmptyDataError:
+            continue
+        cols = [c for c in INFERENCE_VALUE_COLS if c in frame.columns]
+        if cols:
+            frames.append(frame[cols].copy())
+    if not frames:
+        return np.nan
+    values = pd.to_numeric(pd.concat(frames, ignore_index=True).stack(), errors="coerce")
+    values = values.replace([np.inf, -np.inf], np.nan).dropna()
+    return float(values.mean()) if not values.empty else np.nan
+
+
+def _nemenyi_two_groups(avg_rank_1: float, avg_rank_2: float, n_datasets: int) -> float:
+    """Nemenyi post-hoc p-value for the k=2 case from the studentized range distribution."""
+    from scipy.stats import studentized_range
+
+    k = 2
+    difference = abs(avg_rank_1 - avg_rank_2)
+    scale = np.sqrt(k * (k + 1) / (6.0 * n_datasets))
+    statistic = difference / scale
+    return float(studentized_range.sf(statistic * np.sqrt(2), k, np.inf))
+
+
+def _ranked_metric_column(methods_dict, source_key, column_name, transform, datasets, reader=None):
+    """Return (per-dataset (rank_m1, rank_m2) list, avg_rank_m1, avg_rank_2, nemenyi_p)."""
+    m1, m2 = list(methods_dict.keys())
+    ranks = []
+    for dataset in datasets:
+        dir1 = methods_dict[m1][source_key] / dataset
+        dir2 = methods_dict[m2][source_key] / dataset
+        if reader is not None:
+            v1, v2 = reader(dir1), reader(dir2)
+        else:
+            v1 = _read_metric_average(dir1, column_name, transform)
+            v2 = _read_metric_average(dir2, column_name, transform)
+        ranks.append(_rank_pair(v1, v2))
+    avg1 = float(np.nanmean([r[0] for r in ranks]))
+    avg2 = float(np.nanmean([r[1] for r in ranks]))
+    p_value = _nemenyi_two_groups(avg1, avg2, len(datasets))
+    return ranks, avg1, avg2, p_value
+
+
+def _aggregated_rank_column(methods_dict, metric_specs, datasets):
+    """Per-dataset aggregated (min-max normalized, averaged) rank pair, plus avg ranks/p."""
+    m1, m2 = list(methods_dict.keys())
+    ranks = []
+    for dataset in datasets:
+        norms_1, norms_2 = [], []
+        for _, source_key, column_name, transform in metric_specs:
+            v1 = _read_metric_average(methods_dict[m1][source_key] / dataset, column_name, transform)
+            v2 = _read_metric_average(methods_dict[m2][source_key] / dataset, column_name, transform)
+            n1, n2 = _normalize_metric_pair(v1, v2)
+            norms_1.append(n1)
+            norms_2.append(n2)
+        ranks.append(_rank_pair(float(np.nanmean(norms_1)), float(np.nanmean(norms_2))))
+    avg1 = float(np.nanmean([r[0] for r in ranks]))
+    avg2 = float(np.nanmean([r[1] for r in ranks]))
+    p_value = _nemenyi_two_groups(avg1, avg2, len(datasets))
+    return ranks, avg1, avg2, p_value
+
+
+def _fmt_rank_cell(rank_value) -> str:
+    if pd.isna(rank_value):
+        return "--"
+    text = f"{rank_value:g}"
+    return f"\\textbf{{{text}}}" if rank_value in (1.0, 1.5) else text
+
+
+def _fmt_avg_cell(avg_value: float, is_winner: bool, significant: bool) -> str:
+    text = f"{avg_value:.3f}"
+    if significant and is_winner:
+        return f"\\textbf{{{text}}}$^*$"
+    return text
+
+
+def generate_privacy_master_table(target_datasets=None) -> str:
+    datasets = _thesis_dataset_order(target_datasets)
+    link_ranks, link_a1, link_a2, link_p = _ranked_metric_column(
+        LINKABILITY_METHODS, "linkability", "linkability_value", lambda s: s, datasets
+    )
+    inf_ranks, inf_a1, inf_a2, inf_p = _ranked_metric_column(
+        LINKABILITY_METHODS, "linkability", None, None, datasets, reader=_read_inference_average
+    )
+
+    lines = [
+        "\\renewcommand{\\arraystretch}{1}",
+        "\\begin{table}[htbp]",
+        "\\caption{Individual and average ranks for linkability and attribute inference risk, "
+        "comparing $\\epsilon$-PrivateSMOTE ($\\epsilon$-PS) and FP-SMOTE (FP). Bold values indicate "
+        "the best-performing method (Rank 1) for each dataset. A Nemenyi post-hoc test confirmed no "
+        "statistically significant difference between the overall average ranks at the "
+        "$\\alpha = 0.05$ significance level for either metric "
+        f"($p = {link_p:.4f}$ for linkability; $p = {inf_p:.4f}$ for inference).}}",
+        "\\label{tab:linkability_ranks}",
+        "\\centering",
+        "\\setlength{\\tabcolsep}{4pt}",
+        "\\begin{tabular}{|l|cc|cc|}",
+        "\\hline",
+        "\\multirow{2}{*}{\\textbf{Dataset}}",
+        "& \\multicolumn{2}{c|}{\\textbf{Linkability}}",
+        "& \\multicolumn{2}{c|}{\\textbf{Inference}} \\\\",
+        "\\cline{2-5}",
+        "& \\textbf{$\\epsilon$-PS} & \\textbf{FP}",
+        "& \\textbf{$\\epsilon$-PS} & \\textbf{FP} \\\\",
+        "\\hline",
+    ]
+    for i, dataset in enumerate(datasets):
+        cells = [
+            _format_dataset_name(dataset),
+            _fmt_rank_cell(link_ranks[i][0]), _fmt_rank_cell(link_ranks[i][1]),
+            _fmt_rank_cell(inf_ranks[i][0]), _fmt_rank_cell(inf_ranks[i][1]),
+        ]
+        lines.append(" & ".join(cells) + " \\\\")
+    lines.append("\\hline")
+    avg_cells = [
+        "\\textbf{Avg Rank}",
+        _fmt_avg_cell(link_a1, link_a1 < link_a2, link_p < 0.05),
+        _fmt_avg_cell(link_a2, link_a2 < link_a1, link_p < 0.05),
+        _fmt_avg_cell(inf_a1, inf_a1 < inf_a2, inf_p < 0.05),
+        _fmt_avg_cell(inf_a2, inf_a2 < inf_a1, inf_p < 0.05),
+    ]
+    lines.append(" & ".join(avg_cells) + " \\\\")
+    lines.extend([
+        "\\hline",
+        "\\multicolumn{5}{l}{\\footnotesize $\\epsilon$-PS denotes $\\epsilon$-PrivateSMOTE; "
+        "FP denotes FP-SMOTE.} \\\\",
+        "\\end{tabular}",
+        "\\end{table}\n",
+    ])
+    return "\n".join(lines)
+
+
+def generate_fairness_master_table(target_datasets=None) -> str:
+    datasets = _thesis_dataset_order(target_datasets)
+
+    metric_columns = []  # (display_name, ranks, avg1, avg2, p)
+    for display_name, source_key, column_name, transform in FAIRNESS_METRICS:
+        ranks, a1, a2, p = _ranked_metric_column(
+            FAIRNESS_METHODS, source_key, column_name, transform, datasets
+        )
+        metric_columns.append((display_name, ranks, a1, a2, p))
+
+    # The aggregated column is intentionally computed over EOD/SPD/DI only (AOD excluded),
+    # preserving the validated thesis result (1.846 / 1.154, significant). AOD is reported
+    # as a standalone column rather than folded into the aggregate.
+    aggregate_metrics = [m for m in FAIRNESS_METRICS if m[0] != "AOD"]
+    agg_ranks, agg_a1, agg_a2, agg_p = _aggregated_rank_column(FAIRNESS_METHODS, aggregate_metrics, datasets)
+    metric_columns.append(("Aggregated", agg_ranks, agg_a1, agg_a2, agg_p))
+
+    group_spec = "cc|" * len(metric_columns)
+    group_headers = "".join(
+        f"& \\multicolumn{{2}}{{c|}}{{\\textbf{{{name}}}}}\n" for name, *_ in metric_columns
+    )
+    sub_headers = "".join("& \\textbf{Fair} & \\textbf{FP}\n" for _ in metric_columns)
+
+    lines = [
+        "\\begin{table*}[t!]",
+        "\\centering",
+        "\\caption{Individual and aggregated fairness ranks comparing Fair-SMOTE and FP-SMOTE across "
+        "AOD, EOD, SPD, DI, and aggregated fairness. Bold values indicate the best-performing method "
+        "(Rank 1). Asterisks ($^*$) denote statistically significant differences ($p < 0.05$), "
+        "highlighting FP-SMOTE's advantage in DI and aggregated fairness.}",
+        "\\label{tab:master_fairness_ranks}",
+        "\\small",
+        "\\setlength{\\tabcolsep}{4pt}",
+        f"\\begin{{tabular}}{{|l|{group_spec}}}",
+        "\\hline",
+        "\\multirow{2}{*}{\\textbf{Dataset}}",
+        group_headers.rstrip() + " \\\\",
+        f"\\cline{{2-{1 + 2 * len(metric_columns)}}}",
+        sub_headers.rstrip() + " \\\\",
+        "\\hline",
+    ]
+    for i, dataset in enumerate(datasets):
+        cells = [_format_dataset_name(dataset)]
+        for _, ranks, *_ in metric_columns:
+            cells.append(_fmt_rank_cell(ranks[i][0]))
+            cells.append(_fmt_rank_cell(ranks[i][1]))
+        lines.append(" & ".join(cells) + " \\\\")
+    lines.append("\\hline")
+    avg_cells = ["\\textbf{Avg Rank}"]
+    for _, _, a1, a2, p in metric_columns:
+        avg_cells.append(_fmt_avg_cell(a1, a1 < a2, p < 0.05))
+        avg_cells.append(_fmt_avg_cell(a2, a2 < a1, p < 0.05))
+    lines.append(" & ".join(avg_cells) + " \\\\")
+    lines.extend([
+        "\\hline",
+        "\\multicolumn{" + str(1 + 2 * len(metric_columns)) + "}{l}{\\footnotesize $^*$ Indicates "
+        "statistically significant difference (Nemenyi test, $p < 0.05$).} \\\\",
+        "\\end{tabular}",
+        "\\end{table*}\n",
+    ])
+    return "\n".join(lines)
+
+
+def generate_thesis_tables(dataset_set: str = "ALL", output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
+    """Write the exact 5-preliminary_results.tex rank tables (5.1 + inference, 5.2 + AOD)."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    target_datasets = DATASET_SETS.get(dataset_set, DATASET_SETS["ALL"])
+
+    privacy_tex = generate_privacy_master_table(target_datasets)
+    fairness_tex = generate_fairness_master_table(target_datasets)
+
+    out_path = output_dir / "thesis_rank_tables.tex"
+    out_path.write_text(privacy_tex + "\n\n" + fairness_tex, encoding="utf-8")
+
+    print("% ===== Table 5.1 (tab:linkability_ranks) =====")
+    print(privacy_tex)
+    print("\n% ===== Table 5.2 (tab:master_fairness_ranks) =====")
+    print(fairness_tex)
+    print(f"\nWrote {out_path}")
 
 
 def generate_all_tables(dataset_set: str = "ALL", metric_set: str = "ALL", output_dir: Path = DEFAULT_OUTPUT_DIR):
@@ -524,6 +774,14 @@ if __name__ == "__main__":
         default="ALL",
         help="Choose the metric parameter set to process."
     )
+    parser.add_argument(
+        "--thesis",
+        action="store_true",
+        help="Emit the exact 5-preliminary_results.tex rank tables (5.1 + inference, 5.2 + AOD).",
+    )
     args = parser.parse_args()
-    
-    generate_all_tables(dataset_set=args.dataset_set, metric_set=args.metric_set)
+
+    if args.thesis:
+        generate_thesis_tables(dataset_set=args.dataset_set)
+    else:
+        generate_all_tables(dataset_set=args.dataset_set, metric_set=args.metric_set)

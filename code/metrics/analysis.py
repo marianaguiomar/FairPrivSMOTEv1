@@ -1721,6 +1721,96 @@ def print_single_outs_by_qi(
                     f"max={row['max_single_out_pct']:.2f}%"
                 )
 
+def print_full_dataset_single_outs_combined(
+    dataset_name,
+    binning_strategies=("uniform", "quantile", "kmeans"),
+    k_values=(3, 5)
+):
+    """
+    Print the number of single-outs for an ENTIRE dataset under each of its QIs.
+    Evaluates exact matches ("no binning") PLUS the specified binning strategies.
+
+    Args:
+        dataset_name (str): Dataset identifier, for example "56.csv" or "56".
+        binning_strategies (tuple[str] | list[str]): Binning strategies to evaluate.
+        k_values (tuple[int] | list[int]): Anonymity thresholds to check.
+    """
+
+    # 1. Resolve Dataset Path
+    dataset_key = os.path.splitext(dataset_name)[0] if dataset_name else None
+    if dataset_key is None:
+        raise ValueError("dataset_name must be provided.")
+
+    dataset_file = f"{dataset_key}.csv"
+    candidate_paths = [
+        os.path.join("datasets", "inputs", "test", dataset_file),
+    ]
+
+    file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+    if file_path is None:
+        raise ValueError(f"Dataset file not found for '{dataset_key}'. Checked: {candidate_paths}")
+
+    # 2. Load Data and Metadata
+    data = pd.read_csv(file_path)
+    key_vars_list = get_key_vars(dataset_file, "key_vars.csv")
+    continuous_columns = get_continuous_columns(str(dataset_key), "continuous_attributes.csv")
+    total_rows = len(data)
+
+    # Validate strategies
+    valid_strategies = {"quantile", "uniform", "kmeans"}
+    invalid_strategies = [s for s in binning_strategies if s not in valid_strategies]
+    if invalid_strategies:
+        raise ValueError(
+            f"Invalid binning strategies: {invalid_strategies}. "
+            f"Valid options are: {sorted(valid_strategies)}"
+        )
+
+    # Create the full list of strategies to run: exact (no binning) first, then the binning ones
+    run_strategies = ["exact"] + list(binning_strategies)
+
+    print(f"\n{'='*60}")
+    print(f"ANALYZING FULL DATASET: '{dataset_key}'")
+    print(f"Total samples: {total_rows}")
+    print(f"{'='*60}")
+
+    # 3. Evaluate Single-Outs across all Strategies, K-values, and QIs
+    for strategy in run_strategies:
+        if strategy == "exact":
+            print(f"\n--- Evaluation Method: EXACT MATCHES (NO BINNING) ---")
+        else:
+            print(f"\n--- Evaluation Method: BINNING ({strategy.upper()}) ---")
+
+        for k in k_values:
+            print(f"\n[k = {k}]")
+
+            for qi_idx, qi_vars in enumerate(key_vars_list):
+                missing_columns = [col for col in qi_vars if col not in data.columns]
+                if missing_columns:
+                    print(f"  QI-{qi_idx} (Skipped): Missing columns {missing_columns}")
+                    continue
+
+                # Isolate data for current QI
+                data_qi = data.copy()
+
+                # If we are using a binning strategy, apply it to the continuous columns
+                if strategy != "exact":
+                    for col in continuous_columns:
+                        if col in data_qi.columns and col in qi_vars:
+                            kbd = KBinsDiscretizer(n_bins=10, encode='ordinal', strategy=strategy)
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("ignore", UserWarning)
+                                warnings.simplefilter("ignore", FutureWarning)
+                                data_qi[col] = kbd.fit_transform(data_qi[[col]])
+
+                # Group by the QI variables (either exact raw values or binned values)
+                kgrp = data_qi.groupby(qi_vars)[qi_vars[0]].transform(len)
+                
+                # Flag rows where the equivalence class size is less than k
+                single_out = np.where(kgrp < k, 1, 0)
+                single_out_count = int(single_out.sum())
+                single_out_pct = (single_out_count / total_rows) * 100 if total_rows else 0
+
+                print(f"  QI-{qi_idx}: {single_out_count:5d} single-outs ({single_out_pct:6.2f}%) | Features: {', '.join(qi_vars)}")
 
 def analyze_fold_csvs(
     csv_paths_or_folder,
@@ -1965,9 +2055,12 @@ if __name__ == "__main__":
     #print_average_privacy_metrics(linkability_folder)
     #print_average_fairness_metrics(input_folder_improved)
     #print_average_fairness_metrics_across_datasets(input_folder_cluster_fairness)
-    print_average_privacy_metrics_across_datasets(input_folder_cluster_privacy)
+    #print_average_privacy_metrics_across_datasets(input_folder_cluster_privacy)
 
+    #print_single_outs_by_qi("23", by_folds=True, n_splits=5, random_state=42)
+    print_full_dataset_single_outs_combined("23")
     #print_average_di(input_folder_improved)
+    '''
     test_datasets_root = os.path.join("datasets", "inputs", "test")
     summary_frames = []
     for file_name in sorted(os.listdir(test_datasets_root)):
@@ -2016,6 +2109,7 @@ if __name__ == "__main__":
         summary_full_path = "results_metrics/median_fair_new/summary_full.csv"
         summary_full_df.to_csv(summary_full_path, index=False)
         print(f"Saved full combined summary to {summary_full_path}")
+    '''
     '''
     for file_name in sorted(os.listdir(test_datasets_root)):
         if not file_name.endswith(".csv"):

@@ -91,12 +91,23 @@ helper_images/
 experiment/
 plots/
 old/
+exploratory_metadata/
+cluster/
+_latex/
+thesis/
+abreu_plots/
+_new_latex/
+thesis_defense/
+.claude/
 
 class_attribute.csv
 key_vars.csv
 protected_attributes.csv
 sensitive_attribute.csv
 continuous_attributes.csv
+CLAUDE.md
+/presentation.pptx
+/radar_inference.png
 
 
 priv39/

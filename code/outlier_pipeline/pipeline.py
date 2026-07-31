@@ -7,6 +7,7 @@ import pandas as pd
 import sys
 import re
 from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import StandardScaler  # === OUTLIER CHANGE: Napierala needs scaled feats ===
 import psutil, os
 import numpy as np
 
@@ -35,20 +36,12 @@ from others.fair import generate_samples
 from outliers.outliers import TypologyDetector
 
 
-epsilon_values = [0.1, 0.5, 1.0, 5.0, 10.0]
-#epsilon_values = [0.5, 1.0, 5.0]
+epsilon_values = [0.1, 0.5]
 k_values = [3,5]
-knn_values = [3,5]
-#augmentation_values = [0.6, 0.8]
-augmentation_values = [0.3, 0.4]
-per_values = [2, 3]
-'''
-epsilon_values = [0.5]
-k_values = [3]
 knn_values = [5]
-augmentation_values = [0.3]
-per_values = [2]
-'''
+#augmentation_values = [0.6, 0.8]
+augmentation_values = [0.4]
+
 
 
 def _print_group_counts(df, class_column, protected_attribute, fold_label):
@@ -124,18 +117,33 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
     if not os.path.exists(final_output_folder):
         os.makedirs(final_output_folder)
 
+    # === OUTLIER: progress counters (the only console output) =================
+    # Total work units = (dataset x protected-attribute x 5 folds). One unit per
+    # stage prints one line: generating / measuring privacy / measuring fairness.
+    _total = 0
+    for _fn in os.listdir(input_folder):
+        if not _fn.endswith(".csv"):
+            continue
+        _dn = re.match(r'^(.*?).csv', _fn).group(1)
+        _total += len(process_protected_attributes(_dn, "protected_attributes.csv")) * 5
+    _gen_done = _priv_done = _fair_done = 0
+    # =========================================================================
 
     ######################## APPLY FAIR-PRIV SMOTE ################################
     for file_name in os.listdir(input_folder):
         if not file_name.endswith(".csv"):
             continue
-            
+
+        if file_name != "55.csv" and file_name != "adult.csv":
+            continue
+
         file_path = os.path.join(input_folder, file_name)
         data = pd.read_csv(file_path)
-        print(f"\nProcessing file: {file_name}")
 
         dataset_name_match = re.match(r'^(.*?).csv', file_name)
         dataset_name = dataset_name_match.group(1)
+
+        print(f"\n{'='*60}\nPROCESSING DATASET: {dataset_name}\n{'='*60}")
 
         protected_attribute_list = process_protected_attributes(dataset_name, "protected_attributes.csv")
         class_column = get_class_column(dataset_name, "class_attribute.csv")
@@ -162,7 +170,6 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
             if protected_attribute not in data.columns:
                 raise ValueError(f"Protected attribute '{protected_attribute}' not found in the file. Please check the dataset or the protected attributes list.")  # Skip to next file if the column doesn't exist
             if not check_protected_attribute(data, class_column, protected_attribute):
-                print(f"Fold {fold_idx} of '{file_name}' is NOT valid for protected attribute '{protected_attribute}', skipping.")
                 continue
             
             # --- NEW STRATIFICATION ---
@@ -175,12 +182,10 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
             
             # Start timing the 5-fold cross-validation for this protected attribute
             cv_start_time = time.time()
-            print(f"Starting 5-fold CV for protected '{protected_attribute}' at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cv_start_time))}")
 
             for fold_idx, (train_idx, test_idx) in enumerate(skf.split(data, strat_labels)):
 
                 if binning=="quantile" and file_name=="credit.csv" and fold_idx!=4:
-                    print(f"fold {fold_idx} for dataset {file_name} with binning {binning} already processed, skipping")
                     continue
                 
                 process = psutil.Process(os.getpid())
@@ -193,8 +198,6 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                 # ---------------------------------------------------------
                 # --- NEW EXPLORATORY DETECTION (SAFE & DECOUPLED) ---
                 # ---------------------------------------------------------
-                print(f"  -> Running outlier detection for Fold {fold_idx}...")
-
                 outlier_mask_fold = None  # === OUTLIER CHANGE: default if detection fails ===
                 try:
                     # Filter for numerical columns to avoid scikit-learn crashing on text
@@ -209,15 +212,21 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                     typology_metadata['protected_attr'] = train_data[protected_attribute].values
 
                     # === OUTLIER CHANGE ===
-                    # Per-row geometric-outlier flag = Distance OR Density 'Outlier'. typology_metadata
-                    # rows are in the same order as train_data (built from num_train_data), and train_data
-                    # was reset_index(drop=True), so this array aligns BY POSITION with the frame later
-                    # passed to smote_v3. (Distance + Density are the tiers our analysis tied to
-                    # linkability; LOF/Tukey and the Rare/Borderline tiers are intentionally excluded.)
-                    outlier_mask_fold = (
-                        (typology_metadata['Distance_Type'] == 'Outlier') |
-                        (typology_metadata['Density_Type'] == 'Outlier')
-                    ).to_numpy()
+                    # Per-row outlier flag = Napierala & Stefanowski k-NN 'Outlier' tier
+                    # (label-aware: minority-class rows whose k nearest neighbours are
+                    # ALL the other class, i.e. the 0:5 case). Computed on StandardScaler
+                    # features so neighbour distances are scale-comparable. Non-minority
+                    # rows are 'Majority' and never flagged. typology_metadata rows are in
+                    # the same order as train_data (built from num_train_data), and
+                    # train_data was reset_index(drop=True), so this array aligns BY
+                    # POSITION with the frame later passed to smote_v3.
+                    _Xstd = StandardScaler().fit_transform(
+                        np.nan_to_num(num_train_data.to_numpy(float)))
+                    _y = train_data[class_column].to_numpy()
+                    _minority = pd.Series(_y).value_counts().idxmin()
+                    _nap = detector.detect_napierala_knn(_Xstd, _y, _minority)
+                    typology_metadata['Napierala_Type'] = _nap
+                    outlier_mask_fold = (_nap == 'Outlier')
                     # === END OUTLIER CHANGE ===
 
                     # Create the folder automatically based strictly on the dataset name
@@ -228,10 +237,8 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
 
                     # Save ONLY the 4 outlier columns + 3 traceability columns
                     typology_metadata.to_csv(csv_path, index=False)
-                    print(f"  -> Fold {fold_idx} metadata safely saved to {csv_path}")
                 except Exception as e:
                     outlier_mask_fold = None  # === OUTLIER CHANGE: degrade gracefully -> behaves like baseline ===
-                    print(f"  -> Skipping outlier detection for {dataset_name} Fold {fold_idx} due to error: {e}")
                 # ---------------------------------------------------------
                 
                 '''
@@ -304,9 +311,22 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                                     #print("QI", ix, "after SMOTE checksum:", train_data.sum(numeric_only=True).sum())
                                     #print((train_data_before != train_data).sum())
                                     invalid = False
+
+                # === OUTLIER: progress -- generation done for this fold ===
+                _gen_done += 1
+                print(f"generating new datasets -> {_gen_done}/{_total}", flush=True)
+
                 if not invalid:
                     fairness_output_file = f"results_metrics/fairness_results/outputs_4/{final_folder_name}/fairness_intermediate.csv"
-                    '''
+                    # === OUTLIER: progress -- privacy stage ===
+                    _priv_done += 1
+                    print(f"measuring privacy -> {_priv_done}/{_total}", flush=True)
+                    process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
+                    #process_similarity(output_fold_folder, train_data, output_file=f"results_metrics/similarity_results/outputs_4/{final_folder_name}/similarity_intermediate.csv")
+
+                    # === OUTLIER: progress -- fairness stage ===
+                    _fair_done += 1
+                    print(f"measuring fairness -> {_fair_done}/{_total}", flush=True)
                     rf_seeds = fairness_rf_seeds if fairness_rf_seeds is not None else [57]
                     if len(rf_seeds) == 1:
                         process_fairness(
@@ -326,17 +346,14 @@ def method_3(input_folder, epsilon_values, k_values, knn_values, augmentation_va
                             protected_attribute=protected_attribute,
                             fitted_binners_by_file=fitted_binners_by_file,
                         )
-                        '''
-                    #process_linkability(output_fold_folder, train_data, test_data, output_file=f"results_metrics/linkability_results/outputs_4/{final_folder_name}/linkability_intermediate.csv")
-                    #process_similarity(output_fold_folder, train_data, output_file=f"results_metrics/similarity_results/outputs_4/{final_folder_name}/similarity_intermediate.csv")
-                    print("")    
+
+                print                    
                 
                 # End timing for the 5-fold CV and print elapsed time
                 
                 cv_end_time = time.time()
                 elapsed = cv_end_time - cv_start_time
-                print(f"Completed 5-fold CV for protected '{protected_attribute}'. Elapsed: {time.strftime('%H:%M:%S', time.gmtime(elapsed))}")
-                
+
                 process = psutil.Process(os.getpid())
                 #print("Memory used (MB) after:", process.memory_info().rss / 1024**2)
 
@@ -559,8 +576,8 @@ def run_all_removal_strategies(input_folder):
 
 #input_folder_name = "compas"
 #final_folder_name = "tomek_class_only"
-input_folder_name = "test_original"
-final_folder_name = "outliers"
+input_folder_name = "test"
+final_folder_name = "outlier_pipeline_napierala"
 method_number = "3"
 
 removal_strategy = None  # Options: "class_only", "majority_only", "subgroup_rules", None

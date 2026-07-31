@@ -19,6 +19,28 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from main.pipeline_helper import get_key_vars, binary_columns_percentage, process_protected_attributes, get_class_column, ds_name_sorter, process_sensitive_attributes
 
 
+# ------ HARDCODED PARAMETER EXCLUSIONS ------
+# Hyperparameter values to skip entirely (not even measured). Filenames encode
+# every param as _eps<e>_k<k>_knn<knn>_aug<a>. Add/remove values here as needed.
+SKIP_EPS = {10.0}      # e.g. {10.0} drops _eps10.0_ files
+SKIP_AUG = {0.3}       # e.g. {0.3}  drops _aug0.3_ files
+SKIP_K = set()         # e.g. {3}
+SKIP_KNN = set()       # e.g. {5}
+
+
+def _skip_file(file_name):
+    """True if this output file should be excluded based on the SKIP_* sets above."""
+    def _val(tag):
+        m = re.search(rf"_{tag}([0-9.]+)", file_name)
+        return float(m.group(1)) if m else None
+    eps, aug, k, knn = _val("eps"), _val("aug"), _val("k"), _val("knn")
+    if eps is not None and eps in SKIP_EPS: return True
+    if aug is not None and aug in SKIP_AUG: return True
+    if k is not None and k in SKIP_K: return True
+    if knn is not None and knn in SKIP_KNN: return True
+    return False
+
+
 def _parse_ci_value(ci):
     if pd.isna(ci):
         return (np.nan, np.nan)
@@ -42,6 +64,9 @@ def run_linkability(transf_folder_path, train_fold_path, test_fold_path, og = Fa
             
     # Loop through each file and each value of nqi (0, 1, 2, 3,4)
     for idx, file in enumerate(file_list, start=1):
+        if _skip_file(file):
+            print(f"Skipping (excluded param) {idx}/{total_files}: {file}")
+            continue
         #TODO check
         print(f"\n\nProcessing file {idx}/{total_files}: {file}")
         if og:
@@ -452,6 +477,9 @@ def average_fairness(input_folder, test_fold, std=False, original=False, protect
 
     for idx, file_name in enumerate(os.listdir(input_folder), start=1):
         if file_name.endswith(".csv"):
+            if _skip_file(file_name):
+                print(f"Skipping (excluded param) {idx}/{total}: {file_name}")
+                continue
             file_path = os.path.join(input_folder, file_name)
 
             if not original and not fair:

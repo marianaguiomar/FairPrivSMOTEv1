@@ -3,7 +3,12 @@ import time
 import pandas as pd
 import argparse
 from anonymeter.evaluators import LinkabilityEvaluator, SinglingOutEvaluator, InferenceEvaluator
-from sdmetrics.single_table import (DCROverfittingProtection, DCRBaselineProtection, DisclosureProtection, DisclosureProtectionEstimate)
+try:
+    from sdmetrics.single_table import (DCROverfittingProtection, DCRBaselineProtection, DisclosureProtection, DisclosureProtectionEstimate)
+except ImportError:
+    # Older/newer sdmetrics without these names: DCR/disclosure unavailable, but
+    # anonymeter-based linkability/singling-out/inference still work.
+    DCROverfittingProtection = DCRBaselineProtection = DisclosureProtection = DisclosureProtectionEstimate = None
 from sdv.metadata import SingleTableMetadata
 
 import os

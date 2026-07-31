@@ -14,10 +14,14 @@ FAIRNESS_METHODS = {
 
 # Metrics to fetch
 METRICS = {
+    "AOD": "AOD_protected",
     "EOD": "EOD_protected",
     "SPD": "SPD",
     "DI": "DI",
 }
+
+# Where the radar plots are written
+OUTPUT_DIR = PROJECT_ROOT / "icde_plots"
 
 # --- DATASET NAMING & SORTING LOGIC ---
 TEXT_DATASETS = ["adult", "compas", "credit", "german", "law", "oulad", "student"]
@@ -105,7 +109,7 @@ def _get_paired_metric_means(ds_name: str, col: str, mode: str):
     # Apply transformations (Distance from ideal)
     def transform(raw_val, metric_col):
         if pd.isna(raw_val): return np.nan
-        if metric_col in ["EOD_protected", "SPD"]: 
+        if metric_col in ["AOD_protected", "EOD_protected", "SPD"]:
             return abs(raw_val)
         if metric_col == "DI": 
             return abs(raw_val - 1.0)
@@ -130,6 +134,7 @@ def run_analysis(mode: str):
     
     # Custom titles for the radar plots
     CUSTOM_TITLES = {
+        "AOD": "Mean AOD by Dataset",
         "SPD": "Mean SPD by Dataset",
         "EOD": "Mean EOD by Dataset",
         "DI": "Mean DI by Dataset",
@@ -204,7 +209,11 @@ def run_analysis(mode: str):
         plt.title(CUSTOM_TITLES[metric_name], size=14, y=1.1)
         plt.legend(bbox_to_anchor=(1.2, 1.1))
         
-        plt.savefig(f"radar_{metric_name}.png", dpi=300, bbox_inches='tight')
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        output_path = OUTPUT_DIR / f"radar_{metric_name}.png"
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Saved: {output_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

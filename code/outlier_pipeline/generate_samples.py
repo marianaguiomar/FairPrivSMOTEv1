@@ -30,12 +30,31 @@ from main.privatesmote_old import apply_private_smote_new
 from privatesmote_outlier import apply_private_smote_focused  # === OUTLIER CHANGE ===
 from sklearn.preprocessing import KBinsDiscretizer, StandardScaler  # === OUTLIER CHANGE: StandardScaler ===
 import matplotlib.pyplot as plt
-import umap
+try:
+    import umap  # only needed by plot_fairness_umap (visualization-only)
+except ImportError:
+    umap = None
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# === OUTLIER CHANGE: A/B toggle for operation (i) (centroid de-isolation) ===
+# DEISOLATE=True  (variant A): outlier single-outs are de-isolated in place
+#   (centroid pull) and EXCLUDED from standard PrivateSMOTE replacement.
+# DEISOLATE=False (variant B): skip the centroid move; outlier single-outs are
+#   handled by the SAME standard 1:1 replacement as every other single-out.
+# Operation (iii) (focused budget allocation) is unaffected either way.
+DEISOLATE = True
+
+# How the de-isolation move perturbs a target row's continuous QIs (toward the centroid):
+#   "additive" (current): new = orig + U(0,1)*(centroid-orig) + Laplace(0,1/eps)   [raw-units additive noise]
+#   "twostage"          : (1) p = orig + U(0,1)*(centroid-orig)   [SMOTE de-isolation pull]
+#                         (2) new_j = p_j + (centroid_j-p_j)*Laplace(0,1/eps)        [PrivateSMOTE noise,
+#                             with +-std_j*Laplace fallback when centroid_j==p_j, range-clamped to [min,max]]
+#       -> uses the published PrivateSMOTE DP construction; keeps E[move]=0.5*(centroid-orig) (inward pull).
+DEISO_MODE = "additive"
 
 
 def _build_group_label(protected_values, class_values):
@@ -99,6 +118,11 @@ def _deisolate_outlier_singleouts(dataset, dataset_name, key_vars, class_column,
         nn = NN(n_neighbors=min(knn + 1, len(sub))).fit(X)
         nbr = nn.kneighbors(X, return_distance=False)
         pos = {lab: i for i, lab in enumerate(sub.index)}
+        # raw-unit per-column stats over the subgroup (for the "twostage" PrivateSMOTE rule)
+        _sub_arr = sub[num_qi].astype(float)
+        col_std = _sub_arr.std(ddof=0).to_numpy()
+        col_min = _sub_arr.min().to_numpy()
+        col_max = _sub_arr.max().to_numpy()
         for lab in tgt.index:
             r = pos[lab]
             neigh = [j for j in nbr[r] if j != r][:knn]
@@ -106,11 +130,31 @@ def _deisolate_outlier_singleouts(dataset, dataset_name, key_vars, class_column,
                 continue
             centroid = sub.iloc[neigh][num_qi].astype(float).mean(axis=0).to_numpy()
             orig = sub.loc[lab, num_qi].astype(float).to_numpy()
-            gap = rng.random()
-            newv = orig + gap * (centroid - orig) + rng.laplace(0.0, 1.0 / epsilon, size=len(num_qi))
+            if DEISO_MODE in ("twostage", "twostage_origgap"):
+                # (1) SMOTE-style uniform pull toward the centroid
+                p = orig + rng.random() * (centroid - orig)
+                # (2) PrivateSMOTE per-column perturbation, scaled by:
+                #     "twostage"        -> residual gap (centroid - p)  [noise shrinks after the pull]
+                #     "twostage_origgap"-> original gap (centroid - orig) [full noise budget, C2]
+                gap_base = (centroid - orig) if DEISO_MODE == "twostage_origgap" else (centroid - p)
+                newv = p.copy()
+                for j in range(len(num_qi)):
+                    L = rng.laplace(0.0, 1.0 / epsilon)
+                    if gap_base[j] == 0:
+                        step = rng.choice([-1.0, 1.0]) * col_std[j] * L
+                    else:
+                        step = gap_base[j] * L
+                    cand = p[j] + step
+                    if col_min[j] <= cand <= col_max[j]:
+                        newv[j] = cand
+                    elif col_min[j] <= p[j] - step <= col_max[j]:
+                        newv[j] = p[j] - step
+                    # else: leave newv[j] = p[j]
+            else:  # "additive" (current)
+                gap = rng.random()
+                newv = orig + gap * (centroid - orig) + rng.laplace(0.0, 1.0 / epsilon, size=len(num_qi))
             dataset.loc[lab, num_qi] = newv
             n_moved += 1
-    print(f"de-isolated (outlier AND single_out) rows toward in-subgroup centroid: {n_moved}")
     return dataset
 
 
@@ -908,7 +952,7 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         if binning not in valid_binning:
             raise ValueError(f"Invalid binning strategy: {binning}. Choose from {sorted(valid_binning)}")
 
-        print(f"hitting binning ({binning})")
+        #print(f"hitting binning ({binning})")
         # SAVE ORIGINAL DATA BEFORE BINNING
         original_dataset = dataset.copy()
         continuous_columns = get_continuous_columns(str(dataset_name), "continuous_attributes.csv")
@@ -969,16 +1013,16 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     # the downstream replacement (other single-outs) and augmentation see the relocated
     # rows. These rows are then EXCLUDED from standard PrivateSMOTE replacement (handled
     # here) and kept as (de-isolated) originals -- count-neutral, in-subgroup.
-    dataset = _deisolate_outlier_singleouts(
-        dataset, dataset_name, key_vars, class_column, protected_attribute, epsilon, knn)
+    if DEISOLATE:
+        dataset = _deisolate_outlier_singleouts(
+            dataset, dataset_name, key_vars, class_column, protected_attribute, epsilon, knn)
     # === END OUTLIER CHANGE ===
 
     # --- Step 2: Count class + protected attribute combinations ---
     category_counts = dataset.groupby([class_column, protected_attribute]).size().to_dict()
     majority_class = max(category_counts, key=category_counts.get)
     maximum_count = category_counts[majority_class]
-    reduced_maximum_count = int(maximum_count * augmentation_rate)  
-    print(f"Category counts: {category_counts}")
+    reduced_maximum_count = int(maximum_count * augmentation_rate)
 
     # --- Step 3: Get minority classes and how many samples to add ---
     minority_classes = {key: value for key, value in category_counts.items() if key != majority_class}
@@ -1025,10 +1069,13 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         # outlier single-outs were already de-isolated in place (centroid pull) and are
         # kept as originals -- so exclude them here to avoid double-processing. Together
         # this still de-isolates EVERY single-out (privacy-safe), just via two mechanisms.
-        maj_target = (df_majority['single_out'] == 1) & (df_majority['is_outlier'] == 0)
+        # variant A excludes outliers (de-isolated above); variant B includes them
+        maj_target = (df_majority['single_out'] == 1)
+        if DEISOLATE:
+            maj_target = maj_target & (df_majority['is_outlier'] == 0)
         df_majority_single_out = df_majority[maj_target]
         df_majority_remaining  = df_majority[~maj_target]
-        print(f"majority outlier single_outs to de-isolate: {len(df_majority_single_out)}")
+        #print(f"majority outlier single_outs to de-isolate: {len(df_majority_single_out)}")
 
         # Only need enough rows in the full subgroup to build the KNN graph; replace iff
         # there is at least one target. If there are none, leave df_majority untouched
@@ -1064,11 +1111,11 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
 
     for class_tuple, df_subset in df_minority.items():
         
-        print(f"\n--- MINORITY SUBGROUP {class_tuple} BEFORE AUGMENTATION ---")
-        print("Total size:", len(df_subset))
-        print("Single-outs:", len(df_subset[df_subset['single_out']==1]))
-        print("Non-single-outs:", len(df_subset[df_subset['single_out']!=1]))
-        print("Target to generate:", samples_to_increase[class_tuple] if majority else int(len(df_subset)*augmentation_rate))
+        #print(f"\n--- MINORITY SUBGROUP {class_tuple} BEFORE AUGMENTATION ---")
+        #print("Total size:", len(df_subset))
+        #print("Single-outs:", len(df_subset[df_subset['single_out']==1]))
+        #print("Non-single-outs:", len(df_subset[df_subset['single_out']!=1]))
+        #print("Target to generate:", samples_to_increase[class_tuple] if majority else int(len(df_subset)*augmentation_rate))
         
         #print(f"class_tuple: {class_tuple}")
         df_single_out = df_subset[df_subset['single_out'] == 1]
@@ -1083,7 +1130,10 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
         # Standard PrivateSMOTE replacement covers the NON-outlier single-outs. The outlier
         # single-outs were already de-isolated in place (centroid pull, kept as originals),
         # so exclude them here. Every single-out is still de-isolated, via two mechanisms.
-        sub_target = (df_subset['single_out'] == 1) & (df_subset['is_outlier'] == 0)
+        # variant A excludes outliers (de-isolated above); variant B includes them
+        sub_target = (df_subset['single_out'] == 1)
+        if DEISOLATE:
+            sub_target = sub_target & (df_subset['is_outlier'] == 0)
         df_target = df_subset[sub_target]
         df_rest   = df_subset[~sub_target]
 
@@ -1167,7 +1217,7 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
             #print(f"After augmentation: {len(augmented)} synthetic rows added for {class_tuple}")
             
         elif len(df_subset) < (knn+1):
-            print(f"Not enough samples to perform augmentation for {class_tuple} (need at least {knn+1}, have {len(df_subset)})")
+            #print(f"Not enough samples to perform augmentation for {class_tuple} (need at least {knn+1}, have {len(df_subset)})")
             return None, fitted_binners
         #print("\n")
     '''    
@@ -1210,13 +1260,6 @@ def new_apply(dataset, dataset_name, protected_attribute, epsilon, class_column,
     if 'is_outlier' in final_df.columns:   # === OUTLIER CHANGE: drop the helper flag ===
         final_df = final_df.drop(columns=['is_outlier'])
     
-    
-    print("\nFinal subclass sizes:")
-    for class_tuple in df_minority:
-        final_count = len(final_df[(final_df[class_column] == class_tuple[0]) & 
-                                (final_df[protected_attribute] == class_tuple[1])])
-        print(f"  - {class_tuple}: {final_count}")
-    print(f"  - df_majority final: {len(final_df[(final_df[class_column] == majority_class[0]) & (final_df[protected_attribute] == majority_class[1])])}")
     
     cleaned_final_df = final_df.applymap(unpack_value)
     cleaned_final_df = cleaned_final_df.applymap(standardize_binary)

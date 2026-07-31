@@ -1,0 +1,495 @@
+import csv
+import ast
+import os
+import numpy as np
+import pandas as pd
+import re
+from sklearn.neighbors import NearestNeighbors as NN
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
+
+def reduce_for_neighbors(standardized_data):
+    """Fix 1: optionally project standardized features into a PCA subspace before
+    nearest-neighbor search, so that neighbor selection (and therefore PrivateSMOTE
+    interpolation seeds) is computed on a manifold where distances are meaningful
+    instead of in a high-dimensional space where distances concentrate.
+
+    Gated by the FPS_PCA_NEIGHBORS env var (off by default => identity, i.e. the
+    original behavior). FPS_PCA_VARIANCE sets the retained variance ratio.
+    Row order is preserved, so any precomputed neighbor indices stay valid.
+    """
+    if os.environ.get("FPS_PCA_NEIGHBORS", "0") != "1":
+        return standardized_data
+    X = np.asarray(standardized_data)
+    n_samples, n_features = X.shape
+    # Not enough rows/cols for a meaningful projection -> leave untouched.
+    if n_samples <= 3 or n_features <= 2:
+        return X
+    variance = float(os.environ.get("FPS_PCA_VARIANCE", "0.95"))
+    pca = PCA(n_components=variance, svd_solver="full", random_state=42)
+    return pca.fit_transform(X)
+
+def get_key_vars(file_name, key_vars_file):
+    '''
+    Loads the key variables from a CSV file and returns the key_vars corresponding 
+    to the specific file name.
+
+    The CSV file (`key_vars_file`) is expected to contain two columns: 
+    - The first column contains the file names (without extensions).
+    - The second column contains the corresponding key variables in list format.
+
+    Args:
+        file_name (str): The name of the dataset file for which key variables need to be retrieved.
+        key_vars_file (str): The path to the CSV file that contains the key variables.
+
+    Returns:
+        list: The list of key variables for the given file name.
+
+    Raises:
+        ValueError: If the format of the key_vars field is invalid or if no key_vars 
+                    are found for the given file.
+        NOTE: there should be no spaces between commas in the .csv. otherwise, a value error will be raised
+    '''
+
+    key_vars_dict = {}
+
+    with open(key_vars_file, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header if present
+        for row in reader:
+            file_id = row[0].strip()
+            raw_value = row[1].strip()
+
+            # Check if the key_vars field is correctly enclosed
+            if raw_value.startswith("[") and raw_value.endswith("]"):
+                # Try to safely evaluate the key_vars field
+                try:
+                    key_vars_dict[file_id] = ast.literal_eval(raw_value)  # Convert string to list
+                except (SyntaxError, ValueError) as e:
+                    raise ValueError(f"Error parsing key_vars for file {file_id}: {raw_value}\n{e}")
+            else:
+                raise ValueError(f"Invalid key_vars format for file {file_id}: {raw_value}")
+
+    file_key = os.path.splitext(file_name)[0]  # Remove .csv extension from file name
+
+    if file_key not in key_vars_dict:
+        raise ValueError(f"Error: No key_vars found for file {file_name} (searched as {file_key})")
+
+    return key_vars_dict[file_key]  # Return key_vars list
+
+def process_protected_attributes(file_name, protected_attributes_file_path):
+    # Create a dictionary to store the results
+    protected_attr_dict = {}
+
+    with open(protected_attributes_file_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header if present
+        for row in reader:
+            file_id = row[0].strip()
+            raw_value = row[1].strip()
+
+            # Check if the key_vars field is correctly enclosed
+            if raw_value.startswith("[") and raw_value.endswith("]"):
+                # Sanitize the raw_value to ensure each element is a string
+                sanitized_value = raw_value[1:-1]  # Remove the brackets
+                protected_list = [item.strip() for item in sanitized_value.split(",")]
+
+                # Store the protected attributes
+                protected_attr_dict[file_id] = protected_list
+            else:
+                raise ValueError(f"Invalid key_vars format for file {file_id}: {raw_value}")
+
+        if file_name not in protected_attr_dict:
+            raise ValueError(f"Error: No key_vars found for file {file_name} (searched as {file_name})")
+
+    return protected_attr_dict[file_name]
+
+def process_sensitive_attributes(file_name, sensitive_attributes_file_path):
+    '''
+    Loads the sensitive attributes from a CSV file. 
+    Returns the list of sensitive attributes for the given file_name.
+    
+    Expected format: CSV with columns [file, sensitive_attribute]
+    where sensitive_attribute is formatted as "['attr1','attr2','attr3']" (valid Python list literal)
+    '''
+    with open(sensitive_attributes_file_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header
+        
+        for row in reader:
+            if not row:
+                continue
+                
+            file_id = row[0].strip()
+            
+            # If we found the specific file we are looking for
+            if file_id == file_name:
+                raw_value = row[1].strip()
+                
+                try:
+                    # ast.literal_eval safely converts "['attr1','attr2']" string to ['attr1', 'attr2'] list
+                    sensitive_list = ast.literal_eval(raw_value)
+                    
+                    if isinstance(sensitive_list, list):
+                        return sensitive_list
+                    else:
+                        raise ValueError(f"Invalid sensitive_attribute format for file {file_id}: {raw_value} (not a list)")
+                        
+                except (ValueError, SyntaxError) as e:
+                    raise ValueError(f"Error parsing sensitive_attribute for file {file_id}: {raw_value}\n{e}")
+    
+    raise ValueError(f"Error: No sensitive_attribute found for file {file_name}")
+
+def get_continuous_columns(file_name, continuous_attributes_file_path):
+    '''
+    Loads the continuous attributes from a CSV file.
+    Returns the list of continuous attributes for the given file_name.
+
+    Expected format: CSV with columns [file, continuous_attribute]
+    where continuous_attribute is formatted as "['attr1','attr2','attr3']" (valid Python list literal)
+    '''
+    with open(continuous_attributes_file_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header
+
+        for row in reader:
+            if not row:
+                continue
+
+            file_id = row[0].strip()
+
+            # If we found the specific file we are looking for
+            if file_id == file_name:
+                raw_value = row[1].strip()
+
+                try:
+                    # ast.literal_eval safely converts "['attr1','attr2']" string to ['attr1', 'attr2'] list
+                    continuous_list = ast.literal_eval(raw_value)
+
+                    if isinstance(continuous_list, list):
+                        return continuous_list
+                    else:
+                        raise ValueError(f"Invalid continuous_attribute format for file {file_id}: {raw_value} (not a list)")
+
+                except (ValueError, SyntaxError) as e:
+                    raise ValueError(f"Error parsing continuous_attribute for file {file_id}: {raw_value}\n{e}")
+
+    raise ValueError(f"Error: No continuous_attribute found for file {file_name}")
+
+def get_class_column(file_name, class_column_file):
+    '''
+    Loads the class column from a CSV file and returns the corresponding class column 
+    for the specific file name.
+
+    The CSV file (`class_column_file`) is expected to contain two columns:
+    - The first column contains the file names (without extensions).
+    - The second column contains the corresponding class column (single attribute).
+
+    Args:
+        file_name (str): The name of the dataset file for which the class column needs to be retrieved.
+        class_column_file (str): The path to the CSV file that contains the class columns.
+
+    Returns:
+        str: The class column for the given file name.
+
+    Raises:
+        ValueError: If the format of the class column field is invalid or if no class column 
+                    is found for the given file.
+        NOTE: there should be no spaces between commas in the .csv. otherwise, a ValueError will be raised
+    '''
+
+    class_column_dict = {}
+
+    with open(class_column_file, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  # Skip header if present
+        for row in reader:
+            file_id = row[0].strip()
+            class_column_value = row[1].strip()
+
+            # Ensure the class_column_value is a single string, not a list or other format
+            if class_column_value and not class_column_value.startswith("["):
+                class_column_dict[file_id] = class_column_value
+            else:
+                raise ValueError(f"Invalid class_column format for file {file_id}: {class_column_value}")
+
+    file_key = os.path.splitext(file_name)[0]  # Remove .csv extension from file name
+
+    if file_key not in class_column_dict:
+        raise ValueError(f"Error: No class_column found for file {file_name} (searched as {file_key})")
+
+    return class_column_dict[file_key]
+
+def check_protected_attribute(data, class_column, protected_attribute, singleouts=False):
+    #print(f"class col: {class_column}, protected_attribute: {protected_attribute}")
+    # Check if the column contains only 1s and 0s and has at least one of each
+    if not set(data[protected_attribute].dropna()) <= {0, 1}:
+        print(f"Protected attribute '{protected_attribute}' column does not contain only 1s and 0s.")
+        return False  # Skip to next file if the column contains other values
+
+    if data[protected_attribute].nunique() < 2:
+        print(f"Protected attribute '{protected_attribute}' column must have at least one 1 and one 0.")
+        return False  # Skip to next file if the column doesn't have at least one 1 and one 0
+    
+    # New check: Ensure there is at least one row for each combination of protected attribute and class
+    combinations = [
+        (0, 0),  # (protected_attribute == 0 AND class == 0)
+        (0, 1),  # (protected_attribute == 0 AND class == 1)
+        (1, 0),  # (protected_attribute == 1 AND class == 0)
+        (1, 1)   # (protected_attribute == 1 AND class == 1)
+    ]
+
+    # Verify that there is at least one row for each combination
+    category_counts = data.groupby([class_column, protected_attribute]).size().to_dict()
+
+    # Check if any of the combinations has a count of 0
+    missing_combinations = [comb for comb in combinations if category_counts.get(comb, 0) == 0]
+
+    if missing_combinations:
+        print(f"Missing combinations: {missing_combinations}")
+        return False  # Skip to next file if any combination is missing
+    
+    if singleouts==True:
+        # Additional check: At least three rows with highest_risk == 1 for missing combinations
+        missing_high_risk_combinations = []
+        for comb in combinations:
+            df_minority = data[(data[class_column] == comb[0]) & (data[protected_attribute] == comb[1])]
+            # Select numeric columns
+            df_numeric = df_minority[df_minority['highest_risk'] == 1].select_dtypes(include=[np.number])
+            
+            if df_numeric.empty or len(df_numeric) <3:
+                missing_high_risk_combinations.append(comb)
+
+        if missing_high_risk_combinations:
+            print(f"Missing high-risk combinations: {missing_high_risk_combinations}")
+            return False  # Skip if missing combinations with highest_risk == 1 and at least 3 numeric rows
+         
+
+
+    # If all checks pass, return True
+    return True
+
+def binary_columns_percentage(input_file, class_column):
+    """
+    Given an input CSV file, finds all binary columns (containing only 0s and 1s),
+    and returns their column indices and percentage of 1s, ignoring the class column.
+
+    :param input_file: Path to the CSV file
+    :param class_column: Name of the class column to exclude
+    :return: Tuple (list of binary column indices, dictionary mapping column indices to percentages)
+    """
+    # Load the data
+    df = pd.read_csv(input_file)
+
+    # Identify binary columns (only containing 0 and 1), excluding the class column
+    binary_cols = [
+        df.columns.get_loc(col)  # Convert column name to index
+        for col in df.columns if col != class_column and df[col].dropna().isin([0, 1]).all()
+    ]
+
+    # Calculate percentage of 1s for each binary column
+    binary_percentages = {
+        df.columns.get_loc(col): (df[col].sum() / len(df[col])) for col in df.columns
+        if col != class_column and df[col].dropna().isin([0, 1]).all()
+    }
+
+    return binary_cols, binary_percentages
+
+
+def build_fold_subgroup_cache(train_data, class_column, protected_attribute, qi, max_knn):
+    """Build a fold-level cache of subgroup feature matrices and neighbor indices."""
+    fold_cache = {
+        "qi": qi,
+        "class_column": class_column,
+        "protected_attribute": protected_attribute,
+        "max_knn": max_knn,
+        "subgroups": {},
+    }
+
+    subgroup_cols = [class_column, protected_attribute]
+    for subgroup_key, subgroup_df in train_data.groupby(subgroup_cols, dropna=False):
+        subgroup_data = subgroup_df.reset_index(drop=True).copy()
+        feature_frame = subgroup_data.drop(columns=[class_column], errors="ignore")
+        feature_frame = feature_frame.drop(columns=["single_out", "synthetic"], errors="ignore")
+
+        if feature_frame.empty or len(feature_frame) <= max_knn:
+            fold_cache["subgroups"][subgroup_key] = {
+                "data": subgroup_data,
+                "feature_frame": feature_frame,
+                "standardized_data": None,
+                "neighbor_indices": None,
+            }
+            continue
+
+        encoded_frame = pd.get_dummies(feature_frame, drop_first=True)
+        standardized_data = StandardScaler().fit_transform(encoded_frame)
+        neighbor_space = reduce_for_neighbors(standardized_data)
+        nn = NN(n_neighbors=max_knn + 1).fit(neighbor_space)
+        neighbor_indices = nn.kneighbors(neighbor_space, return_distance=False)
+
+        fold_cache["subgroups"][subgroup_key] = {
+            "data": subgroup_data,
+            "feature_frame": encoded_frame,
+            "standardized_data": standardized_data,
+            "neighbor_indices": neighbor_indices,
+        }
+
+    return fold_cache
+
+def print_class_combinations(dataset_name=None, dataset=None, class_column=None, protected_attributes=None):
+    """
+    Prints class and protected-attribute combination distributions.
+
+     You can call this function in two ways:
+    1) By dataset name (existing behavior):
+       print_class_combinations(dataset_name="56.csv")
+    2) By passing the dataset directly:
+         print_class_combinations(dataset=".../56/fold1/file.csv")
+         print_class_combinations(dataset=dataframe, class_column="target", protected_attributes=["sex"])
+
+    Args:
+        dataset_name (str | None): Dataset name used to locate file and metadata in CSV configs.
+        dataset (pd.DataFrame | str | None): DataFrame or CSV path to use directly.
+            If a CSV path is provided and dataset_name is None, the dataset id is inferred
+            from the grandparent folder name.
+        class_column (str | None): Class column name. If None, loaded from class_attribute.csv when possible.
+        protected_attributes (list[str] | None): Protected attributes. If None, loaded from protected_attributes.csv when possible.
+    """
+
+    def _infer_dataset_key_from_path(dataset_path):
+        normalized_path = os.path.normpath(dataset_path)
+        grandparent_dir = os.path.basename(os.path.dirname(os.path.dirname(normalized_path)))
+        return grandparent_dir if grandparent_dir else None
+
+    dataset_key = os.path.splitext(dataset_name)[0] if dataset_name else None
+
+    if dataset is None:
+        if dataset_key is None:
+            raise ValueError("Either 'dataset_name' or 'dataset' must be provided.")
+
+        dataset_file = f"{dataset_key}.csv"
+        candidate_paths = [
+            os.path.join("datasets", "inputs", "test", dataset_file),
+            #os.path.join("datasets", "inputs", "fair", dataset_file),
+            #os.path.join("datasets", "inputs", "priv", dataset_file),
+            #os.path.join("datasets", "original_treated", "fair_new", dataset_file),
+            #os.path.join("datasets", "original_treated", "priv_new", dataset_file),
+            #os.path.join("datasets", "original_treated", "new", dataset_file),
+        ]
+
+        file_path = next((path for path in candidate_paths if os.path.exists(path)), None)
+        print(file_path)
+        if file_path is None:
+            raise ValueError(f"Dataset file not found for '{dataset_key}'. Checked: {candidate_paths}")
+
+        data = pd.read_csv(file_path)
+    else:
+        if isinstance(dataset, pd.DataFrame):
+            data = dataset.copy()
+        elif isinstance(dataset, str):
+            data = pd.read_csv(dataset)
+            if dataset_key is None:
+                dataset_key = _infer_dataset_key_from_path(dataset)
+        else:
+            raise TypeError("'dataset' must be a pandas DataFrame, a CSV path string, or None.")
+
+    if class_column is None:
+        if dataset_key is None:
+            raise ValueError(
+                "Could not infer dataset id from provided inputs. "
+                "Provide 'dataset_name' or explicitly set 'class_column'."
+            )
+        class_column = get_class_column(dataset_key, "class_attribute.csv")
+
+    if protected_attributes is None:
+        if dataset_key is None:
+            raise ValueError(
+                "Could not infer dataset id from provided inputs. "
+                "Provide 'dataset_name' or explicitly set 'protected_attributes'."
+            )
+        protected_attributes = process_protected_attributes(dataset_key, "protected_attributes.csv")
+
+    total_rows = len(data)
+
+    # Class-level stats
+    class_counts = data[class_column].value_counts().sort_index()
+    print("\nClass distribution:")
+    for cls, count in class_counts.items():
+        percent = (count / total_rows) * 100
+        print(f"Class {cls}: {count} ({percent:.2f}%)")
+
+    # Protected attribute and subclass-level stats
+    for protected_attribute in protected_attributes:
+        if protected_attribute not in data.columns:
+            print(f"\nProtected attribute '{protected_attribute}' not found in dataset columns.")
+            continue
+
+        protected_counts = data[protected_attribute].value_counts().sort_index()
+        print(f"\nProtected attribute '{protected_attribute}' distribution:")
+        for value, count in protected_counts.items():
+            percent = (count / total_rows) * 100
+            print(f"Protected {value}: {count} ({percent:.2f}%)")
+
+        combo_counts = data.groupby([class_column, protected_attribute]).size()
+        print(f"\nSubclass (class, {protected_attribute}) distribution:")
+        for (cls, attr), count in combo_counts.items():
+            percent = (count / total_rows) * 100
+            print(f"Class {cls}, Protected {attr}: {count} ({percent:.2f}%)")
+
+# Helper function to sort files based on the numeric part of the filename
+# Helper function to sort files based on the numeric part of the filename, QI, and dataset name
+def ds_name_sorter(df, file_column='file'):
+    """
+    Sorts a DataFrame by the dataset name, numeric part of the filename, and QI number.
+    Args:
+        df (pd.DataFrame): DataFrame containing a 'file' column with filenames to sort.
+        file_column (str): Name of the column containing the filenames. Default is 'file'.
+    
+    Returns:
+        pd.DataFrame: Sorted DataFrame.
+    """
+    # Function to extract the dataset name (the first part of the filename before the underscore)
+    def extract_dataset_name(filename):
+        return filename.split('_')[0]
+
+    # Function to extract numeric part after the underscore (e.g., 0.1, 0.5)
+    def extract_numeric_part(filename):
+        # Split by underscore and take the part before the first hyphen or end of string
+        number_part = filename.split('_')[1].split('-')[0]
+        return float(number_part)  # Convert to float for proper sorting
+
+    # Function to extract QI number from filename (e.g., QI0, QI1, etc.)
+    def extract_qi_number(filename):
+        match = re.search(r"QI(\d+)", filename)
+        return int(match.group(1)) if match else 0
+
+    # Function to check if a value is numeric
+    def is_numeric(value):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
+    # Apply functions to extract dataset names, numeric parts, and QI numbers
+    df['dataset_name'] = df[file_column].apply(extract_dataset_name)
+    df['num_part'] = df[file_column].apply(extract_numeric_part)
+    df['qi_number'] = df[file_column].apply(extract_qi_number)
+
+    # Sort by dataset name (numeric or alphabetically), then numeric part and QI number
+    df_sorted = df.sort_values(by=['dataset_name', 'num_part', 'qi_number'], 
+                               key=lambda col: col.apply(lambda x: float(x) if is_numeric(x) else x))
+
+    # Drop the helper columns
+    df_sorted = df_sorted.drop(columns=['dataset_name', 'num_part', 'qi_number'])
+
+    return df_sorted
+
+
+if __name__ == "__main__":
+    # Example usage:
+    dataset_name = "56"
+    print_class_combinations(f"{dataset_name}.csv")
+    dataset = "datasets/outputs/outputs_4/old/test_with_replacement/56/fold1/56_eps0.1_k3_knn3_aug0.3_fairprivateSMOTE_V38_QI0.csv"
+    #print_class_combinations(dataset=dataset)
